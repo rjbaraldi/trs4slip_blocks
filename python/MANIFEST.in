@@ -1,0 +1,2 @@
+recursive-include extension *.pyx
+recursive-include src *.cpp *.h
