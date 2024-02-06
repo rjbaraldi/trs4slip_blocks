@@ -26,13 +26,13 @@ def slip(eval_f, eval_jac, x0, lo_bangs, alpha, h, Delta0, sigma, maxiter):
     Delta = 0
     pred_Delta0 = 0
 
-    print("Iter          fn   pred(Delta0)   Delta (acc)")
+    print("Iter         obj   pred(Delta0)   Delta (acc)")
     for n in range(maxiter):
         fn = eval_f(xn)
         gn = eval_jac(xn)
         tvn = eval_tv(xn)
 
-        print("%4u   %.3e      %.3e    %4u" % (n, fn, pred_Delta0, Delta))
+        print("%4u   %.3e      %.3e    %4u" % (n, fn + alpha * tvn, pred_Delta0, Delta))
         Delta, k = Delta0, 0
         accept = False
         while Delta >= 1 and not accept and pred_positive:
