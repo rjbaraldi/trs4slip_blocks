@@ -42,7 +42,10 @@ def slip(eval_f, eval_jac, x0, lo_bangs, alpha, h, Delta0, sigma, maxiter):
                 vert_layer_buffer,
                 vert_value_buffer,
                 vert_prev_buffer,
-                vert_remcap_buffer
+                vert_remcap_buffer,
+                False,
+                0,
+                0
             )
 
             fnk = eval_f(xnk)

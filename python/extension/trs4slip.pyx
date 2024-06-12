@@ -18,7 +18,10 @@ cdef extern from "trs4slip.h":
         int32_t * vert_layer_buffer,
         int32_t * vert_value_buffer,
         int32_t * vert_prev_buffer,
-        int32_t * vert_remcap_buffer    
+        int32_t * vert_remcap_buffer,
+        const int boundcon,
+        double lbound,
+        double rbound  
     );
 
 def run(np.int32_t[::1] x_next not None, # output argument
@@ -30,7 +33,10 @@ def run(np.int32_t[::1] x_next not None, # output argument
         np.int32_t[::1] vert_layer_buffer not None,
         np.int32_t[::1] vert_value_buffer not None,
         np.int32_t[::1] vert_prev_buffer not None,
-        np.int32_t[::1] vert_remcap_buffer not None
+        np.int32_t[::1] vert_remcap_buffer not None,
+        int boundcon,
+        double lbound,
+        double rbound
         ):        
     trs4slip_astar(&x_next[0],
                    &c[0],
@@ -43,4 +49,7 @@ def run(np.int32_t[::1] x_next not None, # output argument
                    &vert_layer_buffer[0],
                    &vert_value_buffer[0],
                    &vert_prev_buffer[0],
-                   &vert_remcap_buffer[0]);
+                   &vert_remcap_buffer[0],
+                   boundcon,
+                   lbound,
+                   rbound);

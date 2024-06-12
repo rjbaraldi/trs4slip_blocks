@@ -101,7 +101,10 @@ int main(int argc, char* argv[])
                     &layer_buffer[0],
                     &value_buffer[0],
                     &prev_buffer[0],
-                    &remcap_buffer[0]
+                    &remcap_buffer[0],
+                    true,
+                    s[0],
+                    s[x.size()-1]
                 );
 
                 double l2err = 0;

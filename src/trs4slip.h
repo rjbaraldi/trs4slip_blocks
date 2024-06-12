@@ -14,5 +14,8 @@ void trs4slip_astar(
     int32_t * vert_layer_buffer,
     int32_t * vert_value_buffer,
     int32_t * vert_prev_buffer,
-    int32_t * vert_remcap_buffer    
+    int32_t * vert_remcap_buffer,
+    int boundcon,
+    double lbound,
+    double rbound 
 );

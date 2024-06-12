@@ -45,18 +45,33 @@ bool binsearch(
     double const *c,
     int32_t const *x,
     int32_t const *bangs,
-    double offset
+    double offset,
+    int boundcon,
+    double lbound,
+    double rbound
 );
 
 inline double addcost(
+    int N,
     int d,
     int pred,
     int32_t const *x,
     double const *c,
-    int layer)
+    int layer,
+    int boundcon,
+    double lbound,
+    double rbound)
 {
-    if (layer > 1)
+    if (layer > 1) {
+        if (layer==N and boundcon) {
+            return c[layer-1]*d + abs(x[layer-1] + d - pred) + abs(x[layer-1] + d - rbound);
+        }
         return c[layer-1]*d + abs(x[layer-1] + d - pred);
+    }
+        
+    if (boundcon) {
+        return c[layer - 1] * d + abs(x[layer-1]+d- lbound);
+    }
     return c[layer - 1] * d;
 }
 
@@ -72,7 +87,10 @@ void trs4slip_astar(
     int32_t * vert_layer_buffer,
     int32_t * vert_value_buffer,
     int32_t * vert_prev_buffer,
-    int32_t * vert_remcap_buffer
+    int32_t * vert_remcap_buffer,
+    int boundcon,
+    double lbound,
+    double rbound
 )
 {
     assert(delta >= 0.);
@@ -87,6 +105,9 @@ void trs4slip_astar(
 
     vector<double> tv(N);
     tv[N - 1] = 0.;
+    if (boundcon) {
+        tv[N-1] = abs(rbound-x[N-1]);
+    }
     for (int i= 1; i < N; i++)
         tv[N-i-1] = abs(x[N-i] - x[N-i-1]) + tv[N-i];
 
@@ -102,7 +123,7 @@ void trs4slip_astar(
     double ub = numeric_limits<double>::max();
 
     if(binsearch(&x_next_out[0], cost_dict, penaltylist, penalty_num, num_runs, ub,
-                delta, N, M, &c[0], &x[0], &bangs[0], offset))
+                delta, N, M, &c[0], &x[0], &bangs[0], offset, boundcon, lbound, rbound))
         return;
 
     fill(&vert_costs_buffer[0], &vert_costs_buffer[N*M*(delta + 1) + 2], numeric_limits<double>::max());
@@ -156,7 +177,7 @@ void trs4slip_astar(
             if (remcap >= 0)
             {
                 double const cost = vert_costs_buffer[current] 
-                    + offset + addcost(d, bangs[curr_value], x ,c, layer);
+                    + offset + addcost(N,d, bangs[curr_value], x ,c, layer, boundcon,lbound,rbound);
                 int const vert_idx_in_next_layer = ((layer-1)*(delta+1)+remcap)*M+k+1;
                 if (vert_costs_buffer[vert_idx_in_next_layer] > cost)
                 {
@@ -232,7 +253,7 @@ void trs4slip_astar(
         }
     }
 
-    std::cout << "Warning: Rounding Errors, astar failed, returned solution might be supoptimal" << std::endl;
+    std::cout << "Warning: Rounding Errors, astar failed, returned solution might be suboptimal" << std::endl;
     
     int iter_num = num_astar;
     int const vert_layer_start = vert_layer_buffer[iter_num];
@@ -272,7 +293,10 @@ bool binsearch(
     double const *c,
     int32_t const *x,
     int32_t const *bangs,
-    double offset)
+    double offset,
+    int boundcon,
+    double lbound,
+    double rbound)
 {
     vector<double> cmax(N);
     cmax[N - 1] = abs(c[N - 1]);
@@ -307,6 +331,9 @@ bool binsearch(
         for (int k = 0; k < M; k++)
         {
             relaxed_costs[N*M-k]=0;
+            if (boundcon) {
+                relaxed_costs[N*M-k]= abs(rbound - bangs[M-1-k]);
+            }
             relaxed_prev[N*M-k]=-1;
             relaxed_used[N*M-k]=0;
             relaxed_value[N*M-k]=M-1-k;
