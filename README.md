@@ -86,7 +86,10 @@ void trs4slip_astar(
     int32_t * vert_layer_buffer,
     int32_t * vert_value_buffer,
     int32_t * vert_prev_buffer,
-    int32_t * vert_remcap_buffer    
+    int32_t * vert_remcap_buffer,
+    const int boundcon,
+    double lbound,
+    double rbound  
 );
 
 ```
@@ -102,6 +105,9 @@ void trs4slip_astar(
 * ```vert_value_buffer```: buffer for internal purposes in order to serve frequent reallocation of memory. The user needs to provide an integer array of size ```N*M*(Delta_max + 1) + 2```, where ```Delta_max``` is the maximum trust-region radius delta that is ever used by the caller.
 * ```vert_prev_buffer```: buffer for internal purposes in order to serve frequent reallocation of memory. The user needs to provide an integer array of size ```N*M*(Delta_max + 1) + 2```, where ```Delta_max``` is the maximum trust-region radius delta that is ever used by the caller.
 * ```vert_remcap_buffer```: buffer for internal purposes in order to serve frequent reallocation of memory. The user needs to provide an integer array of size ```N*M*(Delta_max + 1) + 2```, where ```Delta_max``` is the maximum trust-region radius delta that is ever used by the caller.
+* ```boundcon```: flag that indicates if Dirichlet boundary conditions are supplied for x (implying that jumps to these boundary values are also taken into account in the objective value).
+* ```lbound```: left boundary value (only read if boundcon not false).
+* ```rbound```: right boundary value (only read if boundcon not false).
 
 The python interface is as follows.
 
@@ -115,7 +121,10 @@ def run(np.int32_t[::1] x_next not None,
         np.int32_t[::1] vert_layer_buffer not None,
         np.int32_t[::1] vert_value_buffer not None,
         np.int32_t[::1] vert_prev_buffer not None,
-        np.int32_t[::1] vert_remcap_buffer not None
+        np.int32_t[::1] vert_remcap_buffer not None,
+        int boundcon,
+        double lbound,
+        double rbound
         ): 
 ```
 
