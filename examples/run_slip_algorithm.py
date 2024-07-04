@@ -85,48 +85,51 @@ def lg_objective_var(x, lg_cm, di, f_vec):
 def lg_jacobian_var(x, lg_cm, di, f_vec):
     return lg_jacobian(x, lg_cm, di, f_vec)
 
+def main():
+    N = 8192
+    di = create_discretization_info(-1., 1., N, 5)
+    
+    lo_bangs = np.array([-1, 0, 1], dtype=np.int32)
+    
+    state_vec = np.zeros((N,))
+    control_vec = np.zeros((N,))
+    
+    # == Setup convolution ==
+    # * at Legendre-Gauss points for exact evaluation
+    lg_int_mda_mat = lg_int_mda(di)
+    lg_cm = LgConvPwcMat(lg_int_mda_mat, di)
+    
+    
+    # == Setup optimization ==
+    # * regularization
+    alpha = 5e-5
+    # * initial value
+    x = np.zeros(N, dtype=np.int32)
+    # * desired state for tracking objective
+    f_vec = f(di.lg_t_vec)
+    # * function handles
+    eval_f = lambda x: lg_objective_var(x, lg_cm, di, f_vec)
+    eval_jac = lambda x: lg_jacobian_var(x, lg_cm, di, f_vec)
+    # * algorithm control
+    Delta0 = N // 4
+    sigma = 1e-3
+    maxiter = 500
+    h = 2./N
+    
+    
+    # == Optimization with convolution evaluated at Legendre-Gauss points ==
+    opt_start = time.time()
+    xs = slip(eval_f, eval_jac, x, lo_bangs, alpha, h, Delta0, sigma, maxiter)
+    
+    state_vec = lg_cm.conv(xs)
+    control_vec = xs
+    
+    plt.subplot(1, 2, 1)
+    plt.step(np.linspace(0., 1., N), control_vec)
+    plt.subplot(1, 2, 2)
+    plt.plot(np.linspace(0., 1., state_vec.shape[0]), state_vec)
+    
+    plt.show()
 
-N = 8192
-di = create_discretization_info(-1., 1., N, 5)
-
-lo_bangs = np.array([-1, 0, 1], dtype=np.int32)
-
-state_vec = np.zeros((N,))
-control_vec = np.zeros((N,))
-
-# == Setup convolution ==
-# * at Legendre-Gauss points for exact evaluation
-lg_int_mda_mat = lg_int_mda(di)
-lg_cm = LgConvPwcMat(lg_int_mda_mat, di)
-
-
-# == Setup optimization ==
-# * regularization
-alpha = 5e-5
-# * initial value
-x = np.zeros(N, dtype=np.int32)
-# * desired state for tracking objective
-f_vec = f(di.lg_t_vec)
-# * function handles
-eval_f = lambda x: lg_objective_var(x, lg_cm, di, f_vec)
-eval_jac = lambda x: lg_jacobian_var(x, lg_cm, di, f_vec)
-# * algorithm control
-Delta0 = N // 4
-sigma = 1e-3
-maxiter = 500
-h = 2./N
-
-
-# == Optimization with convolution evaluated at Legendre-Gauss points ==
-opt_start = time.time()
-xs = slip(eval_f, eval_jac, x, lo_bangs, alpha, h, Delta0, sigma, maxiter)
-
-state_vec = lg_cm.conv(xs)
-control_vec = xs
-
-plt.subplot(1, 2, 1)
-plt.step(np.linspace(0., 1., N), control_vec)
-plt.subplot(1, 2, 2)
-plt.plot(np.linspace(0., 1., state_vec.shape[0]), state_vec)
-
-plt.show()
+if __name__ == "__main__":
+    main()
