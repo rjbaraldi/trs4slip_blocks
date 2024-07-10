@@ -2,6 +2,7 @@ import copy
 import numpy as np
 import time
 import matplotlib.pyplot as plt
+import joblib
 
 from utility import *
 import trs4slip
@@ -56,22 +57,61 @@ class OneDPatches:
              self.idx[(j+1)] = np.arange(j*blkSize_noB-buffer, (j+1)*blkSize_noB+buffer)
           # self.extremaPts[(i, j)]
 
+def patchUpdate(ind, gn, xn, lo_bangs, Drad, alpha,  A, W, c, sigma, lg_cm, di, f_vec, fn, tvn, n, k, i): 
+    #temp patch variable
+    xnk_temp = np.zeros(len(ind), dtype=np.int32)
+    
+    N, M = xn.shape[0], lo_bangs.shape[0]
+    ## buffers for c++ vector initialization
+    vert_costs_buffer  = np.empty(N*M*(k + 1) + 2)
+    vert_layer_buffer  = np.empty(N*M*(k + 1) + 2, dtype=np.int32)
+    vert_value_buffer  = np.empty(N*M*(k + 1) + 2, dtype=np.int32)
+    vert_prev_buffer   = np.empty(N*M*(k + 1) + 2, dtype=np.int32)
+    vert_remcap_buffer = np.empty(N*M*(k + 1) + 2, dtype=np.int32)
+    trs4slip.run(#can simply put patch idx, check xnk
+        xnk_temp, 
+        gn[ind] / alpha,
+        xn[ind], 
+        lo_bangs,
+        Drad,
+        vert_costs_buffer,
+        vert_layer_buffer,
+        vert_value_buffer,
+        vert_prev_buffer,
+        vert_remcap_buffer, 
+        True, 
+        xn[ind[0]], 
+        xn[ind[-1]]
+    )
+
+    w   = copy.deepcopy(xn)
+    w[ind] = xnk_temp
+    fnk = lg_objective_var(w, lg_cm, di, f_vec)
+    tvnk = eval_tv(w)
+
+    ared_nkd = fn - fnk + alpha * tvn - alpha * tvnk
+    pred_nkd = gn.dot(xn - w) + alpha * tvn - alpha * tvnk
+    print("%4u     %4u     %4u     %.3e      %.3e   %.3e" % (n, k, i, fnk, alpha*tvnk, fn + alpha*tvn))
+    pred_positive = pred_nkd > 0.
+    if ared_nkd >= sigma * pred_nkd and pred_positive:
+      A.append_data(k, i, w, ared_nkd)
+    elif pred_positive and A.compute_max()[0] < pred_nkd + c*Drad:
+      W.append_data(k+1, i)
+    #remove k, D
+    # print(W.data)
+    W.remove_data(k, i)
+    #don't think you need to return anything
+    return fnk + tvnk
 
 def eval_tv(x):
     return np.sum(np.abs(x[1:] - x[:-1]))
 
-def blockslip(eval_f, eval_jac, x0, patches, lo_bangs, alpha, h, Delta0, sigma, maxiter, maxiter_k):
+def blockslip(x0, patches, lo_bangs, alpha, h, Delta0, sigma, maxiter, maxiter_k, lg_cm, di, f_vec):
     assert x0.ndim == 1
     assert lo_bangs.ndim == 1
     N, M = x0.shape[0], lo_bangs.shape[0]
 
     xn = copy.deepcopy(x0) #make smaller so subproblem solver generates correct size
-    ## buffers for c++ vector initialization
-    vert_costs_buffer = np.empty(N*M*(Delta0 + 1) + 2)
-    vert_layer_buffer = np.empty(N*M*(Delta0 + 1) + 2, dtype=np.int32)
-    vert_value_buffer = np.empty(N*M*(Delta0 + 1) + 2, dtype=np.int32)
-    vert_prev_buffer = np.empty(N*M*(Delta0 + 1) + 2, dtype=np.int32)
-    vert_remcap_buffer = np.empty(N*M*(Delta0 + 1) + 2, dtype=np.int32)
     ## initialize temp variables
     # xnk = copy.deepcopy(x0); #np.empty((N,), dtype=np.int32)
     LnablaF = 1e1 ## guess?
@@ -83,49 +123,22 @@ def blockslip(eval_f, eval_jac, x0, patches, lo_bangs, alpha, h, Delta0, sigma, 
     for n in range(maxiter):
         A = ActiveSet()
         W = WorkingSet(npatches)
-        fn = eval_f(xn)
-        gn = eval_jac(xn)
+        fn = lg_objective_var(xn, lg_cm, di, f_vec) #eval_f(xn)
+        gn = lg_jacobian_var(xn, lg_cm, di, f_vec) #eval_jac(xn)
         tvn = eval_tv(xn)
 
        #Inner patch loop
         for k in range(maxiter_k):
           # while not bool(W) or k == 0: #empty list returns false
           activePatches = W.getActivePatches()
-          for i in activePatches:
-            ind      = patches.idx[i]
-            xnk_temp = np.zeros(len(ind), dtype=np.int32)
-            trs4slip.run(#can simply put patch idx, check xnk
-                xnk_temp, 
-                gn[ind] / alpha,
-                xn[ind], 
-                lo_bangs,
-                Delta0*(2**-k),
-                vert_costs_buffer,
-                vert_layer_buffer,
-                vert_value_buffer,
-                vert_prev_buffer,
-                vert_remcap_buffer, 
-                True, 
-                xn[ind[0]], 
-                xn[ind[-1]]
-            )
-            w   = copy.deepcopy(xn)
-            w[ind] = xnk_temp
-            fnk = eval_f(w)
-            tvnk = eval_tv(w)
-
-            ared_nkd = fn - fnk + alpha * tvn - alpha * tvnk
-            pred_nkd = gn.dot(xn - w) + alpha * tvn - alpha * tvnk
-            print("%4u     %4u     %4u     %.3e      %.3e   %.3e" % (n, k, i, fnk, alpha*tvnk, fn + alpha*tvn))
-            pred_positive = pred_nkd > 0.
-            if ared_nkd >= sigma * pred_nkd and pred_positive:
-              A.append_data(k, i, w, ared_nkd)
-            elif pred_positive and A.compute_max()[0] < pred_nkd + LnablaF*Delta0*(2**(-k)):
-              W.append_data(k+1, i)
-            #remove k, D
-            # print(W.data)
-            W.remove_data(k, i)
-
+          Drad     = Delta0*(2**-k)
+          results = joblib.Parallel(n_jobs = 4, backend='multiprocessing')(
+          joblib.delayed(patchUpdate)(patches.idx[i], gn, xn, lo_bangs, Drad, alpha, A, W,  LnablaF, sigma, lg_cm, di, f_vec, fn, tvn, n, k, i)
+          for i in activePatches)
+          print(results)
+          print(W.data, activePatches)
+          #looper = asyncio.gather(*[patchUpdate(patches.idx(i), gn, xn, lo_bangs, Drad, A, W) for i in activePatches])
+          
           if not bool(W):
              break
 
@@ -162,7 +175,7 @@ def lg_jacobian_var(x, lg_cm, di, f_vec):
     return lg_jacobian(x, lg_cm, di, f_vec)
 
 def main(): 
-    N = 32768 #16384 #8192 
+    N = 8192 #32768 #16384 #8192 
     di = create_discretization_info(-1., 1., N, 5)
     
     lo_bangs = np.array([-1, 0, 1], dtype=np.int32)
@@ -196,8 +209,8 @@ def main():
     patches = OneDPatches(di, numPatches, buffer=bufferSize)
     # == Optimization with convolution evaluated at Legendre-Gauss points ==
     #opt_start = time.time()
-    #x_bs = blockslip(eval_f, eval_jac, x, patches, lo_bangs, alpha, h, Delta0, sigma, maxiter, maxiter_k)
-    x_s  = slip(eval_f, eval_jac, x, lo_bangs, alpha, h, Delta0, sigma, maxiter)
+    x_bs = blockslip(x, patches, lo_bangs, alpha, h, Delta0, sigma, maxiter, maxiter_k, lg_cm, di, f_vec)
+    #x_s  = slip(eval_f, eval_jac, x, lo_bangs, alpha, h, Delta0, sigma, maxiter)
     
     state_vec_bs = lg_cm.conv(x_bs)
     state_vec_s  = lg_cm.conv(x_s)
