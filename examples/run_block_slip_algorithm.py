@@ -3,6 +3,8 @@ import numpy as np
 import time
 import matplotlib.pyplot as plt
 import joblib
+import psutil
+import os
 
 from utility import *
 import trs4slip
@@ -63,7 +65,7 @@ def patchUpdate(ind, gn, xn, lo_bangs, Drad, alpha, i):
 
     N, M = xn.shape[0], lo_bangs.shape[0]
     ## buffers for c++ vector initialization
-    D0 = N // 8
+    D0 = N // 4
     vert_costs_buffer  = np.empty(N*M*(D0 + 1) + 2)
     vert_layer_buffer  = np.empty(N*M*(D0 + 1) + 2, dtype=np.int32)
     vert_value_buffer  = np.empty(N*M*(D0 + 1) + 2, dtype=np.int32)
@@ -93,7 +95,7 @@ def patchUpdate(ind, gn, xn, lo_bangs, Drad, alpha, i):
 def eval_tv(x):
     return np.sum(np.abs(x[1:] - x[:-1]))
 
-def blockslip(x0, patches, lo_bangs, alpha, h, Delta0, sigma, maxiter, maxiter_k, lg_cm, di, f_vec):
+def blockslip(x0, patches, lo_bangs, alpha, h, Delta0, sigma, maxiter, maxiter_k, tol, lg_cm, di, f_vec):
     assert x0.ndim == 1
     assert lo_bangs.ndim == 1
     # N, M = x0.shape[0], lo_bangs.shape[0]
@@ -113,7 +115,7 @@ def blockslip(x0, patches, lo_bangs, alpha, h, Delta0, sigma, maxiter, maxiter_k
         fn = lg_objective_var(xn, lg_cm, di, f_vec) #eval_f(xn)
         gn = lg_jacobian_var(xn, lg_cm, di, f_vec) #eval_jac(xn)
         tvn = eval_tv(xn)
-       #Inner patch loop
+        #Inner patch loop
         for k in range(maxiter_k):
           # while not bool(W) or k == 0: #empty list returns false
           activePatches = W.getActivePatches()
@@ -149,7 +151,7 @@ def blockslip(x0, patches, lo_bangs, alpha, h, Delta0, sigma, maxiter, maxiter_k
         while len(A.data)!=0:
             maxKey     = A.compute_max()[1]
             temp_x     = A.data[maxKey][0][0]
-            ind        = patches.idx[maxKey[1]] #should just pick out grid indices
+            ind        = patches.idx[maxKey[1]] #shoulld just pick out grid indices
             txn[ind]   = temp_x[ind]
             jnt        =  lg_objective_var(txn, lg_cm, di, f_vec) + alpha*eval_tv(txn)
             if jnt < j0:
@@ -159,9 +161,13 @@ def blockslip(x0, patches, lo_bangs, alpha, h, Delta0, sigma, maxiter, maxiter_k
             else:
               break
 
-    if n == maxiter - 1:
-        print("Iteration limit (%d) reached. Solution may be instationary." % (maxiter))
-
+        if n == maxiter - 1:
+          print("Iteration limit (%d) reached. Solution may be instationary." % (maxiter))
+          break
+        stopCrit = np.linalg.norm(gn[np.insert((xn[1:] - xn[:-1]) !=0, 0, False)])/h
+        if np.abs(stopCrit) < tol:
+          print("Stationarity Condition reached. \sum_{i\in n_s} ||g_i||_2  =  ", stopCrit)
+          break
     return xn
 
 
@@ -172,7 +178,7 @@ def lg_objective_var(x, lg_cm, di, f_vec):
 def lg_jacobian_var(x, lg_cm, di, f_vec):
     return lg_jacobian(x, lg_cm, di, f_vec)
 
-def main(N=2**14, alpha = 5e-5, numPatches=5):
+def main(N=2**14, alpha = 5e-5, numPatches=5, tol = 1e-4):
     # N = 2**14 #32768 #16384 #8192
     di = create_discretization_info(-1., 1., N, 5)
 
@@ -207,11 +213,15 @@ def main(N=2**14, alpha = 5e-5, numPatches=5):
     patches = OneDPatches(di, numPatches, buffer=bufferSize)
     # == Optimization with convolution evaluated at Legendre-Gauss points ==
     opt_start = time.time()
-    x_bs = blockslip(x, patches, lo_bangs, alpha, h, Delta0, sigma, maxiter, maxiter_k, lg_cm, di, f_vec)
+    x_bs = blockslip(x, patches, lo_bangs, alpha, h, Delta0, sigma, maxiter, maxiter_k, tol, lg_cm, di, f_vec)
     timebs = time.time() - opt_start
     fbs = eval_f(x_bs)
     tvbs = eval_tv(x_bs)
-    try:
+
+    ## would probably have to put below into slip
+    # process = psutil.Process(os.getpid())
+    # memoryUsage = process.memory_info().rss
+    if np.log(N)/np.log(2) <= 15: #(memoryUsage*1e-9)>2: #check if memory usage is too high
       opt_start = time.time()
       x_s  = slip(eval_f, eval_jac, x, lo_bangs, alpha, h, Delta0, sigma, maxiter)
       time_s = time.time() - opt_start
@@ -221,8 +231,7 @@ def main(N=2**14, alpha = 5e-5, numPatches=5):
       print("N = ", N, "alpha = ", alpha, "Num Patch = ", numPatches, "||x_bs - x_s|| = ",       np.linalg.norm(x_bs - x_s), "||S(x_bs) - S(x_s)|| = ", np.linalg.norm(state_vec_bs - state_vec_s))
       fs = eval_f(x_s)
       tvs = eval_tv(x_s)
-
-    except:
+    else:
       print('Could not run slip')
       x_s = np.empty(x_bs.shape)
       x_s[:] = np.nan

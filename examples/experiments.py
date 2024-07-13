@@ -5,9 +5,9 @@ import run_block_slip_algorithm
 
 
 def main():
-    N = [12, 13, 14, 15]
-    NumPatch = [7, 15]
-    alpha = [2.5e-4, 1e-4, 5e-5, 1e-5]
+    N = [12] #[12, 13, 14, 15]
+    NumPatch = [7]#[7, 15]
+    alpha = [1e-5] #[2.5e-4, 1e-4, 5e-5, 1e-5]
 
     midx = pd.MultiIndex.from_product([N, NumPatch, alpha])
     my_columns = [u'f(xbs)', u'tv(xbs)', u'f(xs)', u'tv(xs)', u't(xbs)', u't(xs)']
