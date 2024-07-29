@@ -94,8 +94,8 @@ def patchUpdate(ind, gn, xn, lo_bangs, Drad, alpha, i):
 
 def eval_tv(x):
     return np.sum(np.abs(x[1:] - x[:-1]))
-
-def blockslip(x0, patches, lo_bangs, alpha, h, Delta0, sigma, maxiter, maxiter_k, tol, lg_cm, di, f_vec):
+    
+def blockslip(x0, patches, lo_bangs, alpha, h, Delta0, sigma, maxiter, maxiter_k, tol, lg_cm, di, f_vec, useParallel = False):
     assert x0.ndim == 1
     assert lo_bangs.ndim == 1
     # N, M = x0.shape[0], lo_bangs.shape[0]
@@ -120,9 +120,16 @@ def blockslip(x0, patches, lo_bangs, alpha, h, Delta0, sigma, maxiter, maxiter_k
           # while not bool(W) or k == 0: #empty list returns false
           activePatches = W.getActivePatches()
           Drad          = Delta0*(2**-k)
+
           #subproblem solve only until we can figure out data sharing
-          results = joblib.Parallel(n_jobs = npatches, backend='multiprocessing')(
-          joblib.delayed(patchUpdate)(patches.idx[i], gn, xn, lo_bangs, Drad, alpha, i) for i in activePatches)
+          if useParallel:
+            results = joblib.Parallel(n_jobs = npatches, backend='multiprocessing')(
+            joblib.delayed(patchUpdate)(patches.idx[i], gn, xn, lo_bangs, Drad, alpha, i) for i in activePatches)
+          else:
+            results = []
+            for i in activePatches:
+              results.append(patchUpdate(patches.idx[i], gn, xn, lo_bangs, Drad, alpha, i))
+
           for (w,i) in results:
             fnk = lg_objective_var(w, lg_cm, di, f_vec)
             tvnk = eval_tv(w)
@@ -178,7 +185,7 @@ def lg_objective_var(x, lg_cm, di, f_vec):
 def lg_jacobian_var(x, lg_cm, di, f_vec):
     return lg_jacobian(x, lg_cm, di, f_vec)
 
-def main(N=2**14, alpha = 5e-5, numPatches=5, tol = 1e-4):
+def main(N=2**12, alpha = 5e-5, numPatches=5, tol = 1e-4, usePlots = True):
     # N = 2**14 #32768 #16384 #8192
     di = create_discretization_info(-1., 1., N, 5)
 
@@ -238,17 +245,38 @@ def main(N=2**14, alpha = 5e-5, numPatches=5, tol = 1e-4):
       fs = eval_f(x_s)
       tvs = eval_tv(x_s)
       time_s = np.nan
+    if usePlots:
+      plt.subplot(1, 2, 1)
+      ind = np.linspace(0., 1., N)
+      plt.plot(ind, control_vec)
+      plt.xlabel('Control')
+      ax = plt.gca()
+      ax.set_xlim([0., 1.])
+      ax.set_ylim([-1.15, 1.15])
+      #plt.ylabel('Integer - value')
+      for i in patches.idx:
+        pb = 0.02
+        terms = patches.idx[i][[0,-1]]
+        plt.hlines(pb*np.mod(i,2) - pb - 1.05, ind[terms[0]], ind[terms[1]], colors = 'k', lw=.5, linestyle = 'dotted')
+        if np.mod(i,2)==0:
+          plt.vlines(ind[terms[0]], -1.05, -2*pb-1.05, colors = 'k', lw = .5)
+          plt.vlines(ind[terms[1]], -1.05, -2*pb-1.05, colors = 'k', lw = .5)
+          plt.text(ind[int(np.median(patches.idx[i]))], -4*pb-1.05, str(i), fontsize=6)
+        else:
+          plt.vlines(ind[terms[0]], pb-1.05, -1.05-pb, colors = 'k', lw = .5)
+          plt.vlines(ind[terms[1]], pb-1.05, -1.05-pb, colors = 'k', lw = .5)
+          plt.text(ind[int(np.median(patches.idx[i]))], .5*pb-1.05, str(i), fontsize=6)
 
-    # plt.subplot(1, 4, 1)
-    # plt.step(np.linspace(0., 1., N),                    control_vec)
-    # plt.subplot(1, 4, 2)
-    # plt.plot(np.linspace(0., 1., state_vec_s.shape[0]),   state_vec_bs)
-    # plt.subplot(1, 4, 3)
-    # plt.plot(np.linspace(0., 1., N),                    control_vec - x_s)
-    # plt.subplot(1, 4, 4)
-    # plt.plot(np.linspace(0., 1., state_vec_s.shape[0]), state_vec_bs - state_vec_s)
-    # plt.show()
-    return fbs, tvbs, fs, tvs, timebs, time_s
+      plt.subplot(1, 2, 2)
+      plt.plot(np.linspace(0., 1., state_vec_s.shape[0]),   state_vec_bs)
+      plt.xlabel('State')
+      ax = plt.gca()
+      ax.set_xlim([0., 1.])
+      ax.set_ylim([-.015, 0.015])
+      plt.tight_layout()
+      plt.savefig(str(N)+"_"+str(alpha)+"_"+str(numPatches), format = 'eps', dpi=1200)
+      plt.close()
+    return (fbs, tvbs, fs, tvs, timebs, time_s), (control_vec, state_vec_bs)
 
 if __name__ == "__main__":
     main()
