@@ -59,10 +59,9 @@ class OneDPatches:
              self.idx[(j+1)] = np.arange(j*blkSize_noB-buffer, (j+1)*blkSize_noB+buffer)
           # self.extremaPts[(i, j)]
 
-def patchUpdate(ind, gn, xn, lo_bangs, Drad, alpha, i):
+def patchUpdate(ind, gn, xn, lb, ub, lo_bangs, Drad, alpha, i):
     #temp patch variable
     xnk_temp = np.zeros(len(ind), dtype=np.int32)
-
     N, M = xn.shape[0], lo_bangs.shape[0]
     ## buffers for c++ vector initialization
     D0 = N // 4
@@ -73,8 +72,8 @@ def patchUpdate(ind, gn, xn, lo_bangs, Drad, alpha, i):
     vert_remcap_buffer = np.empty(N*M*(D0 + 1) + 2, dtype=np.int32)
     trs4slip.run(#can simply put patch idx, check xnk
         xnk_temp,
-        gn[ind] / alpha,
-        xn[ind],
+        gn / alpha,
+        xn,
         lo_bangs,
         Drad,
         vert_costs_buffer,
@@ -83,8 +82,8 @@ def patchUpdate(ind, gn, xn, lo_bangs, Drad, alpha, i):
         vert_prev_buffer,
         vert_remcap_buffer,
         True,
-        xn[ind[0]],
-        xn[ind[-1]]
+        lb, 
+        ub,
     )
 
     w   = copy.deepcopy(xn)
@@ -95,7 +94,7 @@ def patchUpdate(ind, gn, xn, lo_bangs, Drad, alpha, i):
 def eval_tv(x):
     return np.sum(np.abs(x[1:] - x[:-1]))
     
-def blockslip(x0, patches, lo_bangs, alpha, h, Delta0, sigma, maxiter, maxiter_k, tol, lg_cm, di, f_vec, useParallel = False):
+def blockslip(x0, patches, lo_bangs, alpha, h, Delta0, sigma, maxiter, maxiter_k, tol, lg_cm, di, f_vec, useParallel = True):
     assert x0.ndim == 1
     assert lo_bangs.ndim == 1
     # N, M = x0.shape[0], lo_bangs.shape[0]
@@ -124,11 +123,12 @@ def blockslip(x0, patches, lo_bangs, alpha, h, Delta0, sigma, maxiter, maxiter_k
           #subproblem solve only until we can figure out data sharing
           if useParallel:
             results = joblib.Parallel(n_jobs = npatches, backend='multiprocessing')(
-            joblib.delayed(patchUpdate)(patches.idx[i], gn, xn, lo_bangs, Drad, alpha, i) for i in activePatches)
+            joblib.delayed(patchUpdate)(patches.idx[i], gn[patches.idx[i]], xn[patches.idx[i]], xn[patches.idx[i][0]], xn[patches.idx[i][-1]],lo_bangs, Drad, alpha, i) for i in activePatches)
           else:
             results = []
             for i in activePatches:
-              results.append(patchUpdate(patches.idx[i], gn, xn, lo_bangs, Drad, alpha, i))
+              ind = patches.idx[i]
+              results.append(patchUpdate(ind, gn[ind], xn[ind], xn[ind[0]], xn[ind[-1]], lo_bangs, Drad, alpha, i))
 
           for (w,i) in results:
             fnk = lg_objective_var(w, lg_cm, di, f_vec)

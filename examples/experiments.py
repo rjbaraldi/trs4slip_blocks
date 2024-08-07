@@ -20,7 +20,7 @@ def main(exp):
 
     if exp==1:
       N = [13, 14, 15, 16]
-      N = [16]
+      N = [13]
       NumPatch = [3, 5, 7, 9, 11]
       alpha = [np.sqrt(5)*(10**-4), 10**-4, np.sqrt(5)**-1*(10**-4), np.real(np.sqrt(5)**(-2)**(10**-4))]
       midx = pd.MultiIndex.from_product([N, NumPatch, alpha])
