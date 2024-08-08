@@ -20,7 +20,7 @@ def main(exp):
 
     if exp==1:
       N = [16]# [13, 14, 15, 16]
-      NumPatch = [3, 5, 7, 9, 11]
+      NumPatch = [5] #[3, 5, 7, 9, 11]
       alpha = [np.sqrt(5)*(10**-4), 10**-4, np.sqrt(5)**-1*(10**-4), np.real(np.sqrt(5)**(-2)**(10**-4))]
       midx = pd.MultiIndex.from_product([N, NumPatch, alpha])
       my_columns = [u'f(xbs)', u'tv(xbs)', u'f(xs)', u'tv(xs)', u't(xbs)', u't(xs)']

@@ -64,13 +64,13 @@ def patchUpdate(ind, gn, xn, lb, ub, lo_bangs, Drad, alpha, N, i):
     w = np.zeros(len(ind), dtype=np.int32)
     M = lo_bangs.shape[0]
     ## buffers for c++ vector initialization
-    D0 = N // 16 
+    D0 = N // 4
     vert_costs_buffer  = np.empty(N*M*(D0 + 1) + 2)
     vert_layer_buffer  = np.empty(N*M*(D0 + 1) + 2, dtype=np.int32)
     vert_value_buffer  = np.empty(N*M*(D0 + 1) + 2, dtype=np.int32)
     vert_prev_buffer   = np.empty(N*M*(D0 + 1) + 2, dtype=np.int32)
     vert_remcap_buffer = np.empty(N*M*(D0 + 1) + 2, dtype=np.int32)
-    print(w.shape, gn.shape, xn.shape, lb, ub, lo_bangs, vert_costs_buffer.shape)
+
     trs4slip.run(#can simply put patch idx, check xnk
         w,
         gn / alpha,
@@ -83,15 +83,16 @@ def patchUpdate(ind, gn, xn, lb, ub, lo_bangs, Drad, alpha, N, i):
         vert_prev_buffer,
         vert_remcap_buffer,
         True,
-        lb, 
+        lb,
         ub,
     )
+    print('finish')
     return w, i
 
 
 def eval_tv(x):
     return np.sum(np.abs(x[1:] - x[:-1]))
-    
+
 def blockslip(x0, patches, lo_bangs, alpha, h, Delta0, sigma, maxiter, maxiter_k, tol, lg_cm, di, f_vec, useParallel = False):
     assert x0.ndim == 1
     assert lo_bangs.ndim == 1
@@ -243,8 +244,10 @@ def main(N=2**12, alpha = 5e-5, numPatches=5, tol = 1e-4, usePlots = True):
       tvs = eval_tv(x_s)
     else:
       print('Could not run slip')
+      state_vec_bs = lg_cm.conv(x_bs)
       x_s = np.empty(x_bs.shape)
       x_s[:] = np.nan
+      state_vec_s  = lg_cm.conv(x_s)
       fs = eval_f(x_s)
       tvs = eval_tv(x_s)
       time_s = np.nan
