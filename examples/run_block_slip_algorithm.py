@@ -86,7 +86,6 @@ def patchUpdate(ind, gn, xn, lb, ub, lo_bangs, Drad, alpha, N, i):
         lb,
         ub,
     )
-    print('finish')
     return w, i
 
 
@@ -122,7 +121,7 @@ def blockslip(x0, patches, lo_bangs, alpha, h, Delta0, sigma, maxiter, maxiter_k
           #subproblem solve only until we can figure out data sharing
           if useParallel:
             results = joblib.Parallel(n_jobs = npatches, backend='multiprocessing')(
-            joblib.delayed(patchUpdate)(patches.idx[i], gn[patches.idx[i]], xn[patches.idx[i]], xn[patches.idx[i][0]], xn[patches.idx[i][-1]],lo_bangs, Drad, alpha, xn.shape[0], i) for i in activePatches)
+            joblib.delayed(patchUpdate)(patches.idx[i], gn[patches.idx[i]], xn[patches.idx[i]], xn[patches.idx[i][0]], xn[patches.idx[i][-1]], lo_bangs, Drad, alpha, xn.shape[0], i) for i in activePatches)
           else:
             results = []
             for i in activePatches:
@@ -189,14 +188,11 @@ def lg_objective_var(x, lg_cm, di, f_vec):
 def lg_jacobian_var(x, lg_cm, di, f_vec):
     return lg_jacobian(x, lg_cm, di, f_vec)
 
-def main(N=2**12, alpha = 5e-5, numPatches=5, tol = 1e-4, usePlots = True):
+def main(N=2**12, alpha = 5e-5, numPatches=5, tol = 1e-4, usePlots = True, useParallel = False):
     # N = 2**14 #32768 #16384 #8192
     di = create_discretization_info(-1., 1., N, 5)
 
     lo_bangs = np.array([-1, 0, 1], dtype=np.int32)
-
-    state_vec = np.zeros((N,))
-    control_vec = np.zeros((N,))
 
     # == Setup convolution ==
     # * at Legendre-Gauss points for exact evaluation
@@ -224,11 +220,12 @@ def main(N=2**12, alpha = 5e-5, numPatches=5, tol = 1e-4, usePlots = True):
     patches = OneDPatches(di, numPatches, buffer=bufferSize)
     # == Optimization with convolution evaluated at Legendre-Gauss points ==
     opt_start = time.time()
-    x_bs = blockslip(x, patches, lo_bangs, alpha, h, Delta0, sigma, maxiter, maxiter_k, tol, lg_cm, di, f_vec)
+    x_bs = blockslip(x, patches, lo_bangs, alpha, h, Delta0, sigma, maxiter, maxiter_k, tol, lg_cm, di, f_vec, useParallel = useParallel)
     timebs = time.time() - opt_start
     fbs = eval_f(x_bs)
     tvbs = eval_tv(x_bs)
-
+    state_vec_bs = lg_cm.conv(x_bs)
+    
     ## would probably have to put below into slip
     # process = psutil.Process(os.getpid())
     # memoryUsage = process.memory_info().rss
@@ -236,25 +233,23 @@ def main(N=2**12, alpha = 5e-5, numPatches=5, tol = 1e-4, usePlots = True):
       opt_start = time.time()
       x_s  = slip(eval_f, eval_jac, x, lo_bangs, alpha, h, Delta0, sigma, maxiter)
       time_s = time.time() - opt_start
-      state_vec_bs = lg_cm.conv(x_bs)
       state_vec_s  = lg_cm.conv(x_s)
-      control_vec  = x_bs
       print("N = ", N, "alpha = ", alpha, "Num Patch = ", numPatches, "||x_bs - x_s|| = ",       np.linalg.norm(x_bs - x_s), "||S(x_bs) - S(x_s)|| = ", np.linalg.norm(state_vec_bs - state_vec_s))
       fs = eval_f(x_s)
       tvs = eval_tv(x_s)
     else:
       print('Could not run slip')
-      state_vec_bs = lg_cm.conv(x_bs)
       x_s = np.empty(x_bs.shape)
       x_s[:] = np.nan
       state_vec_s  = lg_cm.conv(x_s)
       fs = eval_f(x_s)
       tvs = eval_tv(x_s)
       time_s = np.nan
+    
     if usePlots:
       plt.subplot(1, 2, 1)
       ind = np.linspace(0., 1., N)
-      plt.plot(ind, control_vec)
+      plt.plot(ind, x_bs)
       plt.xlabel('Control')
       ax = plt.gca()
       ax.set_xlim([0., 1.])
@@ -275,14 +270,16 @@ def main(N=2**12, alpha = 5e-5, numPatches=5, tol = 1e-4, usePlots = True):
 
       plt.subplot(1, 2, 2)
       plt.plot(np.linspace(0., 1., state_vec_s.shape[0]),   state_vec_bs)
-      plt.xlabel('State')
+      plt.xlabel('State') #add patches
       ax = plt.gca()
       ax.set_xlim([0., 1.])
       ax.set_ylim([-.015, 0.015])
       plt.tight_layout()
+
+#use parallel here
       plt.savefig(str(N)+"_"+str(alpha)+"_"+str(numPatches), format = 'eps', dpi=1200)
       plt.close()
-    return (fbs, tvbs, fs, tvs, timebs, time_s), (control_vec, state_vec_bs)
+    return (fbs+tvbs, fs+tvs, fbs, tvbs, fs, tvs, timebs, time_s), (x_bs, state_vec_bs)
 
 if __name__ == "__main__":
     main()

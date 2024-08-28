@@ -19,11 +19,11 @@ def main(exp):
     print( "Running experiment: ", exp)
 
     if exp==1:
-      N = [16]# [13, 14, 15, 16]
-      NumPatch = [5] #[3, 5, 7, 9, 11]
-      alpha = [np.sqrt(5)*(10**-4), 10**-4, np.sqrt(5)**-1*(10**-4), np.real(np.sqrt(5)**(-2)**(10**-4))]
+      N = [13, 14, 15, 16]
+      NumPatch = [5, 7, 9, 11]
+      alpha = [np.sqrt(5)*(10**-4), 10**-4, np.sqrt(5)**-1*(10**-4), np.sqrt(5)**(-2)*(10**-4)]
       midx = pd.MultiIndex.from_product([N, NumPatch, alpha])
-      my_columns = [u'f(xbs)', u'tv(xbs)', u'f(xs)', u'tv(xs)', u't(xbs)', u't(xs)']
+      my_columns = [u'J(xbs)', u'J(xs)', u'f(xbs)', u'tv(xbs)', u'f(xs)', u'tv(xs)', u't(xbs)', u't(xs)']
       df = pd.DataFrame(index=midx, columns=my_columns)
       al_ind = 0
       for idx in midx:
@@ -34,10 +34,10 @@ def main(exp):
           np.savetxt(str(idx[0])+str(idx[1])+str(np.mod(al_ind, 4))+'_state.csv', variables[1], delimiter=",")
           for i in range(0, len(results)):
               df.loc[idx, my_columns[i]] = results[i]
-      df.to_pickle('')
+      df.to_pickle('exp1')
     elif exp==2:
-      N = [13, 14, 15]
-      NumPatch = [3, 5, 7, 9, 11, 13]
+      N = [13]
+      NumPatch = [5,]
       alpha = [1e-4]
 
       midx = pd.MultiIndex.from_product([N, NumPatch, alpha])
@@ -50,6 +50,8 @@ def main(exp):
           for i in range(0, len(results)):
               df.loc[idx, my_columns[i]] = results[i]
       df.to_pickle('exp2')
+
+
     print(df.to_latex())
 
 if __name__ == "__main__":
