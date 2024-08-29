@@ -276,8 +276,10 @@ def main(N=2**12, alpha = 5e-5, numPatches=5, tol = 1e-4, usePlots = True, usePa
       ax.set_ylim([-.015, 0.015])
       plt.tight_layout()
 
-#use parallel here
-      plt.savefig(str(N)+"_"+str(alpha)+"_"+str(numPatches), format = 'eps', dpi=1200)
+      if useParallel:
+         plt.savefig("parallel_"+str(N)+"_"+str(alpha)+"_"+str(numPatches), format = 'eps', dpi=1200)
+      else:
+         plt.savefig("serial_"+str(N)+"_"+str(alpha)+"_"+str(numPatches), format = 'eps', dpi=1200)
       plt.close()
     return (fbs+tvbs, fs+tvs, fbs, tvbs, fs, tvs, timebs, time_s), (x_bs, state_vec_bs)
 
