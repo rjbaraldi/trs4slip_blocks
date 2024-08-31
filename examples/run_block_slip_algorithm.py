@@ -59,34 +59,55 @@ class OneDPatches:
              self.idx[(j+1)] = np.arange(j*blkSize_noB-buffer, (j+1)*blkSize_noB+buffer)
           # self.extremaPts[(i, j)]
 
-def patchUpdate(ind, gn, xn, lb, ub, lo_bangs, Drad, alpha, N, i):
+def patchUpdate(ind, gn, xn, uselb, useub, lb, ub, lo_bangs, Drad, alpha, N, i):
     #temp patch variable
     w = np.zeros(len(ind), dtype=np.int32)
     M = lo_bangs.shape[0]
     ## buffers for c++ vector initialization
-    D0 = N // 4
-    vert_costs_buffer  = np.empty(N*M*(D0 + 1) + 2)
-    vert_layer_buffer  = np.empty(N*M*(D0 + 1) + 2, dtype=np.int32)
-    vert_value_buffer  = np.empty(N*M*(D0 + 1) + 2, dtype=np.int32)
-    vert_prev_buffer   = np.empty(N*M*(D0 + 1) + 2, dtype=np.int32)
-    vert_remcap_buffer = np.empty(N*M*(D0 + 1) + 2, dtype=np.int32)
+    # D0 = N // 4
+    # vert_costs_buffer  = np.empty(N*M*(D0 + 1) + 2)
+    # vert_layer_buffer  = np.empty(N*M*(D0 + 1) + 2, dtype=np.int32)
+    # vert_value_buffer  = np.empty(N*M*(D0 + 1) + 2, dtype=np.int32)
+    # vert_prev_buffer   = np.empty(N*M*(D0 + 1) + 2, dtype=np.int32)
+    # vert_remcap_buffer = np.empty(N*M*(D0 + 1) + 2, dtype=np.int32)
 
-    trs4slip.run(#can simply put patch idx, check xnk
-        w,
+    # trs4slip.run(#can simply put patch idx, check xnk
+    #     w,
+    #     gn / alpha,
+    #     xn,
+    #     lo_bangs,
+    #     Drad,
+    #     vert_costs_buffer,
+    #     vert_layer_buffer,
+    #     vert_value_buffer,
+    #     vert_prev_buffer,
+    #     vert_remcap_buffer,
+    #     True,
+    #     lb,
+    #     ub,
+    # )
+    
+    walt = np.zeros(len(ind), dtype=np.int32)
+    trs4slip.run_top(
+        walt,
         gn / alpha,
         xn,
         lo_bangs,
+        np.ones((N - 1,)),
         Drad,
-        vert_costs_buffer,
-        vert_layer_buffer,
-        vert_value_buffer,
-        vert_prev_buffer,
-        vert_remcap_buffer,
         True,
         lb,
         ub,
+        1. if uselb else 0.,
+        1. if useub else 0.
     )
-    return w, i
+    
+    # if uselb and useub:
+    #   diff = np.linalg.norm(w - walt)
+    #   if diff > 0.:
+    #     print("[ERROR] ASTAR gives different solution than TOP.")    
+    w = walt
+    return walt, i
 
 
 def eval_tv(x):
@@ -100,9 +121,15 @@ def blockslip(x0, patches, lo_bangs, alpha, h, Delta0, sigma, maxiter, maxiter_k
     xn = copy.deepcopy(x0) #make smaller so subproblem solver generates correct size
     ## initialize temp variables
     # xnk = copy.deepcopy(x0); #np.empty((N,), dtype=np.int32)
-    LnablaF = 1e1 ## guess?
+    LnablaF = 1e1 ## guess? max of abs of gn?
     npatches = len(patches.idx)
 
+
+    Delta0_start = x0.shape[0] / npatches
+    while Delta0 / 2 >= Delta0_start:
+      Delta0 /= 2
+    
+    
 
     print("n - Iter  k - Iter  Patch     fnki          tvnki      J(x)")
     #Outer total loop
@@ -111,12 +138,17 @@ def blockslip(x0, patches, lo_bangs, alpha, h, Delta0, sigma, maxiter, maxiter_k
         W = WorkingSet(npatches)
         fn = lg_objective_var(xn, lg_cm, di, f_vec) #eval_f(xn)
         gn = lg_jacobian_var(xn, lg_cm, di, f_vec) #eval_jac(xn)
+        LnablaF = np.max(np.abs(gn)) # <--- maybe adapt this in the future
+
         tvn = eval_tv(xn)
+        Drad = Delta0
         #Inner patch loop
         for k in range(maxiter_k):
-          # while not bool(W) or k == 0: #empty list returns false
           activePatches = W.getActivePatches()
           Drad          = Delta0*(2**-k)
+
+          if len(activePatches) == 0 or Drad < 1:
+            break
 
           #subproblem solve only until we can figure out data sharing
           if useParallel:
@@ -126,29 +158,42 @@ def blockslip(x0, patches, lo_bangs, alpha, h, Delta0, sigma, maxiter, maxiter_k
             results = []
             for i in activePatches:
               ind = patches.idx[i]
-              results.append(patchUpdate(ind, gn[ind], xn[ind], xn[ind[0]], xn[ind[-1]], lo_bangs, Drad, alpha, xn.shape[0], i))
+              lidx = ind[0] - 1 
+              ridx = ind[-1] + 1
+              results.append(patchUpdate(ind, gn[ind], xn[ind],
+                                         lidx >= 0,
+                                         ridx <= xn.size - 2,
+                                         xn[lidx] if lidx >= 0 else 0,
+                                         xn[ridx] if ridx <= xn.size - 2 else 0,
+                                         lo_bangs, Drad, alpha, xn.shape[0], i))
 
+          xnk_temp = copy.deepcopy(xn)
+            
           for (w,i) in results:
             ind = patches.idx[i]
-            xnk_temp = xn
             xnk_temp[ind] = w
             fnk = lg_objective_var(xnk_temp, lg_cm, di, f_vec)
             tvnk = eval_tv(xnk_temp)
 
             ared_nkd = fn - fnk + alpha * tvn - alpha * tvnk
             pred_nkd = gn.dot(xn - xnk_temp) + alpha * tvn - alpha * tvnk
-            print("%4u     %4u     %4u     %.3e      %.3e   %.3e" % (n, k, i, fnk, alpha*tvnk, fn + alpha*tvn))
-            pred_positive = sigma*pred_nkd > -1.0e-6
+            print("%4u     %4u     %4u     %.3e      %.3e   %.3e      %.3e" % (n, k, i, fnk, alpha*tvnk, fn + alpha*tvn, pred_nkd))
+            
+            # pred_positive = sigma*pred_nkd > -1.0e-6
+            
+            pred_positive = pred_nkd > 0.            
             if ared_nkd >= sigma * pred_nkd and pred_positive:
               A.append_data(k, i, w, ared_nkd)
             elif pred_positive and A.compute_max()[0] < pred_nkd + LnablaF*Drad:
               W.append_data(k+1, i)
-            #remove k, D
             W.remove_data(k, i)
-          #   patchUpdate(patches.idx[i], gn, xn, lo_bangs, Drad, alpha, A, W, LnablaF, sigma, lg_cm, di, f_vec, fn, tvn, n, k, i)
-          #looper = asyncio.gather(*[patchUpdate(patches.idx(i), gn, xn, lo_bangs, Drad, A, W) for i in activePatches]
+            xnk_temp[ind] = xn[ind]                
+          
           if not bool(W):
              break
+         
+        if Drad < 1:
+            print("Trust region contracted for n = %d, k = %d." % (n, k))
 
         if len(A.data)==0:
             print("Set of Active patches is empty!")
@@ -174,10 +219,11 @@ def blockslip(x0, patches, lo_bangs, alpha, h, Delta0, sigma, maxiter, maxiter_k
         if n == maxiter - 1:
           print("Iteration limit (%d) reached. Solution may be instationary." % (maxiter))
           break
-        stopCrit = np.linalg.norm(gn[np.insert((xn[1:] - xn[:-1]) !=0, 0, False)])/h
-        if np.abs(stopCrit) < tol:
-          print("Stationarity Condition reached. \sum_{i\in n_s} ||g_i||_2  =  ", stopCrit)
-          break
+        
+        # stopCrit = np.linalg.norm(gn[np.insert((xn[1:] - xn[:-1]) !=0, 0, False)])/h
+        # if np.abs(stopCrit) < tol:
+        #   print("Stationarity Condition reached. \sum_{i\in n_s} ||g_i||_2  =  ", stopCrit)
+        #   break
     return xn
 
 
@@ -188,7 +234,7 @@ def lg_objective_var(x, lg_cm, di, f_vec):
 def lg_jacobian_var(x, lg_cm, di, f_vec):
     return lg_jacobian(x, lg_cm, di, f_vec)
 
-def main(N=2**12, alpha = 5e-5, numPatches=5, tol = 1e-4, usePlots = True, useParallel = False):
+def main(N=2**12, alpha = 5e-5, numPatches=5, tol = 1e-6, usePlots = True, useParallel = False):
     # N = 2**14 #32768 #16384 #8192
     di = create_discretization_info(-1., 1., N, 5)
 
@@ -225,6 +271,7 @@ def main(N=2**12, alpha = 5e-5, numPatches=5, tol = 1e-4, usePlots = True, usePa
     fbs = eval_f(x_bs)
     tvbs = eval_tv(x_bs)
     state_vec_bs = lg_cm.conv(x_bs)
+    print("\n")
     
     ## would probably have to put below into slip
     # process = psutil.Process(os.getpid())

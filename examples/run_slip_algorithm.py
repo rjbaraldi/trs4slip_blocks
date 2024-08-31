@@ -26,6 +26,7 @@ def slip(eval_f, eval_jac, x0, lo_bangs, alpha, h, Delta0, sigma, maxiter):
     Delta = 0
     pred_Delta0 = 0
 
+    print("SLIP using topsort as subproblem solver.")
     print("Iter         obj   pred(Delta0)   Delta (acc)")
     for n in range(maxiter):
         fn = eval_f(xn)
@@ -36,16 +37,30 @@ def slip(eval_f, eval_jac, x0, lo_bangs, alpha, h, Delta0, sigma, maxiter):
         Delta, k = Delta0, 0
         accept = False
         while Delta >= 1 and not accept and pred_positive:
-            trs4slip.run(
-                xnk, gn / alpha, xn, lo_bangs, Delta,
-                vert_costs_buffer,
-                vert_layer_buffer,
-                vert_value_buffer,
-                vert_prev_buffer,
-                vert_remcap_buffer,
+            # trs4slip.run(
+            #     xnk, gn / alpha, xn, lo_bangs, Delta,
+            #     vert_costs_buffer,
+            #     vert_layer_buffer,
+            #     vert_value_buffer,
+            #     vert_prev_buffer,
+            #     vert_remcap_buffer,
+            #     False,
+            #     0,
+            #     0
+            # )
+            
+            trs4slip.run_top(
+                xnk,
+                gn / alpha,
+                xn,
+                lo_bangs,
+                np.ones((N - 1,)),
+                Delta,
                 False,
-                0,
-                0
+                0.,
+                0.,
+                1.,
+                1.
             )
 
             fnk = eval_f(xnk)

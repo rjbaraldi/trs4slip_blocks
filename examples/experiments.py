@@ -5,6 +5,20 @@ import numpy as np
 import run_block_slip_algorithm
 import resource
 
+    # trs4slip_top(&x_next[0],
+    #              &c[0],
+    #              &x[0],
+    #              &bangs[0],
+    #              &switchingcost[0],
+    #              delta,
+    #              x.shape[0],
+    #              bangs.shape[0],
+    #              actbounds,
+    #              leftbound,
+    #              rightbound,
+    #              switchcostleft,
+    #              switchcostright);
+
 def main(exp):
 
     try:
@@ -19,8 +33,8 @@ def main(exp):
     print( "Running experiment: ", exp)
 
     if exp==1:
-      N = [13, 14, 15, 16]
-      NumPatch = [5, 7, 9, 11]
+      N = [15]        # N = [13, 14, 15, 16]
+      NumPatch = [3,5,7,9,11]  # NumPatch = [5, 7, 9, 11]
       alpha = [np.sqrt(5)*(10**-4), 10**-4, np.sqrt(5)**-1*(10**-4), np.sqrt(5)**(-2)*(10**-4)]
       midx = pd.MultiIndex.from_product([N, NumPatch, alpha])
       my_columns = [u'J(xbs)', u'J(xs)', u'f(xbs)', u'tv(xbs)', u'f(xs)', u'tv(xs)', u't(xbs)', u't(xs)']
@@ -30,6 +44,8 @@ def main(exp):
           print(idx)
           al_ind += 1
           (results, variables) = run_block_slip_algorithm.main(N=2**idx[0], alpha = idx[2], numPatches=idx[1])
+          print("\n\n")
+
           np.savetxt(str(idx[0])+str(idx[1])+str(np.mod(al_ind, 4))+'_control.csv', variables[0], delimiter=",")
           np.savetxt(str(idx[0])+str(idx[1])+str(np.mod(al_ind, 4))+'_state.csv', variables[1], delimiter=",")
           for i in range(0, len(results)):
