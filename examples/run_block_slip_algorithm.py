@@ -63,29 +63,33 @@ def patchUpdate(ind, gn, xn, uselb, useub, lb, ub, lo_bangs, Drad, alpha, N, i):
     #temp patch variable
     w = np.zeros(len(ind), dtype=np.int32)
     M = lo_bangs.shape[0]
-    ## buffers for c++ vector initialization
-    # D0 = N // 4
-    # vert_costs_buffer  = np.empty(N*M*(D0 + 1) + 2)
-    # vert_layer_buffer  = np.empty(N*M*(D0 + 1) + 2, dtype=np.int32)
-    # vert_value_buffer  = np.empty(N*M*(D0 + 1) + 2, dtype=np.int32)
-    # vert_prev_buffer   = np.empty(N*M*(D0 + 1) + 2, dtype=np.int32)
-    # vert_remcap_buffer = np.empty(N*M*(D0 + 1) + 2, dtype=np.int32)
+    # buffers for c++ vector initialization
+    D0 = N // 4
+    vert_costs_buffer  = np.empty(N*M*(D0 + 1) + 2)
+    vert_layer_buffer  = np.empty(N*M*(D0 + 1) + 2, dtype=np.int32)
+    vert_value_buffer  = np.empty(N*M*(D0 + 1) + 2, dtype=np.int32)
+    vert_prev_buffer   = np.empty(N*M*(D0 + 1) + 2, dtype=np.int32)
+    vert_remcap_buffer = np.empty(N*M*(D0 + 1) + 2, dtype=np.int32)
 
-    # trs4slip.run(#can simply put patch idx, check xnk
-    #     w,
-    #     gn / alpha,
-    #     xn,
-    #     lo_bangs,
-    #     Drad,
-    #     vert_costs_buffer,
-    #     vert_layer_buffer,
-    #     vert_value_buffer,
-    #     vert_prev_buffer,
-    #     vert_remcap_buffer,
-    #     True,
-    #     lb,
-    #     ub,
-    # )
+    number = time.time()
+    rand = np.random.randint(0, 1e6)
+    fn = "%d_%d.npz" % (number, rand)
+
+    trs4slip.run(#can simply put patch idx, check xnk
+        w,
+        gn / alpha,
+        xn,
+        lo_bangs,
+        Drad,
+        vert_costs_buffer,
+        vert_layer_buffer,
+        vert_value_buffer,
+        vert_prev_buffer,
+        vert_remcap_buffer,
+        True,
+        lb,
+        ub,
+    )
     
     walt = np.zeros(len(ind), dtype=np.int32)
     trs4slip.run_top(
@@ -102,10 +106,28 @@ def patchUpdate(ind, gn, xn, uselb, useub, lb, ub, lo_bangs, Drad, alpha, N, i):
         1. if useub else 0.
     )
     
-    # if uselb and useub:
-    #   diff = np.linalg.norm(w - walt)
-    #   if diff > 0.:
-    #     print("[ERROR] ASTAR gives different solution than TOP.")    
+    if uselb and useub:
+      diff = np.linalg.norm(w - walt)
+      if diff > 0.:
+        print("[ERROR] ASTAR gives different solution than TOP.")
+        print(np.linalg.norm(walt - w),
+              gn.dot(walt - xn) 
+              + alpha * np.sum(np.abs(walt[:-1] - walt[1:])) 
+              + alpha * np.abs(walt[0] - lb) 
+              + alpha * np.abs(walt[-1] - ub)
+              - alpha * np.sum(np.abs(xn[:-1] - xn[1:]))
+              - alpha * np.abs(xn[0] - lb) 
+              - alpha * np.abs(xn[-1] - ub),
+              gn.dot(w - xn) 
+              + alpha * np.sum(np.abs(w[:-1] - w[1:])) 
+              + alpha * np.abs(w[0] - lb) 
+              + alpha * np.abs(w[-1] - ub)
+              - alpha * np.sum(np.abs(xn[:-1] - xn[1:]))
+              - alpha * np.abs(xn[0] - lb) 
+              - alpha * np.abs(xn[-1] - ub),
+            )
+        np.savez(fn, x=xn, c=gn/alpha, Xi=lo_bangs, Delta=Drad, bndflag=True, leftvalue=lb, rightvalue=ub)
+ 
     w = walt
     return walt, i
 
