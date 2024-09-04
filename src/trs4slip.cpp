@@ -28,17 +28,17 @@ struct vertex_t
     int idx;
 };
 
-double const BIN_SEARCH_EPS = 1e-9;
-int const NUM_RUNS_MAX = 30; // depends on BIN_SEARCH_EPS
-                             // and be reduced if BIN_SEARCH_EPS is smaller
+double const BIN_SEARCH_EPS = 1e-9; 
+int const NUM_RUNS_MAX = 30;        // depends on BIN_SEARCH_EPS
+                                    // and be reduced if BIN_SEARCH_EPS is smaller
 
 bool binsearch(
-    int32_t *x_next_out,
-    cost_dict_t &cost_dict_out,
-    vector<double> &penaltylist_out,
-    int &penalty_num,
-    int &num_runs,
-    double &ub,
+    int32_t * x_next_out,
+    cost_dict_t & cost_dict_out,
+    vector<double> & penaltylist_out,
+    int & penalty_num,
+    int & num_runs,
+    double & ub,
     int delta,
     int N,
     int M,
@@ -48,7 +48,8 @@ bool binsearch(
     double offset,
     int boundcon,
     double lbound,
-    double rbound);
+    double rbound
+);
 
 inline double addcost(
     int N,
@@ -69,7 +70,6 @@ inline double addcost(
         }
         return c[layer - 1] * d + abs(x[layer - 1] + d - pred);
     }
-
     if (boundcon)
     {
         return c[layer - 1] * d + abs(x[layer - 1] + d - lbound);
@@ -78,28 +78,29 @@ inline double addcost(
 }
 
 void trs4slip_astar(
-    int32_t *x_next_out,
+    int32_t * x_next_out,
     double const *c,
     int32_t const *x,
     int32_t const *bangs,
     int const delta,
     int const N,
     int const M,
-    double *vert_costs_buffer,
-    int32_t *vert_layer_buffer,
-    int32_t *vert_value_buffer,
-    int32_t *vert_prev_buffer,
-    int32_t *vert_remcap_buffer,
+    double * vert_costs_buffer,
+    int32_t * vert_layer_buffer,
+    int32_t * vert_value_buffer,
+    int32_t * vert_prev_buffer,
+    int32_t * vert_remcap_buffer,
     int boundcon,
     double lbound,
-    double rbound)
+    double rbound
+)
 {
     assert(delta >= 0.);
-   
-    double offset = abs(c[N - 1]) * max(x[N - 1] - bangs[0], bangs[M - 1] - x[N - 1]);
+
+    double offset = abs(c[N-1]) * max(x[N-1] - bangs[0], bangs[M-1] - x[N-1]);
     for (int i = N - 2; i >= 0; i--)
     {
-        double const max_element = abs(c[i]) * max(x[i] - bangs[0], bangs[M - 1] - x[i]);
+        double const max_element = abs(c[i]) * max(x[i] - bangs[0], bangs[M-1] - x[i]);
         if (offset < max_element)
             offset = max_element;
     }
@@ -127,7 +128,7 @@ void trs4slip_astar(
     if (binsearch(&x_next_out[0], cost_dict, penaltylist, penalty_num, num_runs, ub,
                   delta, N, M, &c[0], &x[0], &bangs[0], offset, boundcon, lbound, rbound))
         return;
-   
+
     fill(&vert_costs_buffer[0], &vert_costs_buffer[N * M * (delta + 1) + 2], numeric_limits<double>::max());
     std::vector<bool> visited(N * M * (delta + 1) + 2, false);
 
@@ -185,7 +186,7 @@ void trs4slip_astar(
                 {
                     vert_costs_buffer[vert_idx_in_next_layer] = cost;
                     max_lowerbound = 0.0;
-                    if (layer > 1 and remcap > 0)
+                    if (layer<N and layer > 1 and remcap > 0)
                     {
                         int const vert_idx_in_binsearch = (layer - 1) * M + k + 1;
                         for (int t = num_runs - 1; t >= 0; t--)
@@ -198,7 +199,6 @@ void trs4slip_astar(
                                 if (ub > cost_ref.cost - penalty * cost_ref.used + cost)
                                 {
                                     ub = cost_ref.cost - penalty * cost_ref.used + cost;
-                                
                                     penalty_num = t;
                                     num_binsearch = vert_idx_in_binsearch;
                                     num_astar = vert_idx_in_next_layer;
@@ -282,16 +282,15 @@ void trs4slip_astar(
             x_next_out[vl] = bangs[(iter_num - 1) % M];
         }
     }
-
 }
 
 bool binsearch(
-    int32_t *x_next_out,
-    cost_dict_t &cost_dict_out,
-    vector<double> &penaltylist_out,
-    int &penalty_num,
-    int &num_runs,
-    double &ub,
+    int32_t * x_next_out,
+    cost_dict_t & cost_dict_out,
+    vector<double> & penaltylist_out,
+    int & penalty_num, 
+    int & num_runs,
+    double & ub,
     int delta,
     int N,
     int M,

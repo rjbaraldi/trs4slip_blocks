@@ -6,9 +6,8 @@ import matplotlib.pyplot as plt
 from utility import *
 import trs4slip
 
-
 def eval_tv(x):
-    return np.sum(np.abs(x[1:] - x[:-1]))
+    return np.sum(np.abs(x[1:] - x[:-1])) + np.abs(x[0]) + np.abs(x[-1])
 
 def slip(eval_f, eval_jac, x0, lo_bangs, alpha, h, Delta0, sigma, maxiter):
     assert x0.ndim == 1
@@ -16,11 +15,12 @@ def slip(eval_f, eval_jac, x0, lo_bangs, alpha, h, Delta0, sigma, maxiter):
     N, M = x0.shape[0], lo_bangs.shape[0]
 
     xn = copy.deepcopy(x0)
-    vert_costs_buffer = np.empty(N*M*(Delta0 + 1) + 2)
-    vert_layer_buffer = np.empty(N*M*(Delta0 + 1) + 2, dtype=np.int32)
-    vert_value_buffer = np.empty(N*M*(Delta0 + 1) + 2, dtype=np.int32)
-    vert_prev_buffer = np.empty(N*M*(Delta0 + 1) + 2, dtype=np.int32)
-    vert_remcap_buffer = np.empty(N*M*(Delta0 + 1) + 2, dtype=np.int32)
+    # vert_costs_buffer = np.empty(N*M*(Delta0 + 1) + 2)
+    # vert_layer_buffer = np.empty(N*M*(Delta0 + 1) + 2, dtype=np.int32)
+    # vert_value_buffer = np.empty(N*M*(Delta0 + 1) + 2, dtype=np.int32)
+    # vert_prev_buffer = np.empty(N*M*(Delta0 + 1) + 2, dtype=np.int32)
+    # vert_remcap_buffer = np.empty(N*M*(Delta0 + 1) + 2, dtype=np.int32)
+        
     xnk = np.empty((N,), dtype=np.int32)
     pred_positive = True
     Delta = 0
@@ -32,8 +32,15 @@ def slip(eval_f, eval_jac, x0, lo_bangs, alpha, h, Delta0, sigma, maxiter):
         fn = eval_f(xn)
         gn = eval_jac(xn)
         tvn = eval_tv(xn)
-
+        
         print("%4u   %.3e      %.3e    %4u" % (n, fn + alpha * tvn, pred_Delta0, Delta))
+        # v1 = gn[np.insert((xn[1:] - xn[:-1]) !=0, 0, False)]
+        # v2 = gn[np.append((xn[1:] - xn[:-1]) !=0, [False])]
+        # stop_crit = np.linalg.norm(.5 * (v1 + v2)) / h
+        # if n > 0 and stop_crit < 1e-6:
+        #   print("Intationarity = %.2e < 1e-6." % stop_crit)
+        #   break        
+        
         Delta, k = Delta0, 0
         accept = False
         while Delta >= 1 and not accept and pred_positive:
@@ -44,9 +51,9 @@ def slip(eval_f, eval_jac, x0, lo_bangs, alpha, h, Delta0, sigma, maxiter):
             #     vert_value_buffer,
             #     vert_prev_buffer,
             #     vert_remcap_buffer,
-            #     False,
-            #     0,
-            #     0
+            #     True,
+            #     0.,
+            #     0.
             # )
             
             trs4slip.run_top(
@@ -56,7 +63,7 @@ def slip(eval_f, eval_jac, x0, lo_bangs, alpha, h, Delta0, sigma, maxiter):
                 lo_bangs,
                 np.ones((N - 1,)),
                 Delta,
-                False,
+                True, 
                 0.,
                 0.,
                 1.,
@@ -65,7 +72,6 @@ def slip(eval_f, eval_jac, x0, lo_bangs, alpha, h, Delta0, sigma, maxiter):
 
             fnk = eval_f(xnk)
             tvnk = eval_tv(xnk)
-
             ared = fn - fnk + alpha * tvn - alpha * tvnk
             pred = gn.dot(xn - xnk) + alpha * tvn - alpha * tvnk
 
@@ -79,9 +85,8 @@ def slip(eval_f, eval_jac, x0, lo_bangs, alpha, h, Delta0, sigma, maxiter):
                 xn[:] = xnk[:]
             elif pred_positive:
                 Delta = Delta / 2
-
             k = k + 1
-
+            
         if Delta < 1:
             print("Trust region contracted. Solution may be close to stationarity.")
             break

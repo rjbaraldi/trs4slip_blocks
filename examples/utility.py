@@ -124,21 +124,12 @@ def lg_int_mda(di):
     t_mat = t_ctr_mat + lg_t_reps
     a0c_stack = a(t_mat)
     int_mda_stack = -(a0c_stack[:, 1:] - a0c_stack[:, :-1])
-
-    # import matplotlib.pyplot as plt
-    # plt.plot(t_mat[0], a0c_stack[0])
-    # plt.show()
-
-
-
     assert np.allclose(t_mat[:, 1:], di.lg_t_mat)
     return int_mda_stack
-
 
 def lg_jacobian(x, lg_cm, di, f_vec):
     y_vec = lg_cm.conv(x)
     return .5 * .5 * di.h * lg_cm.mat_short.transpose().dot(np.multiply(di.lg_c_vec, 2. * (y_vec - f_vec)))
-
 
 def lg_objective(x, lg_cm, di, f_vec):
     y_vec = lg_cm.conv(x)
