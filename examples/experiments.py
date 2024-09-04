@@ -20,9 +20,9 @@ def main(exp):
     print( "Running experiment: ", exp)
 
     if exp==1:
-      N = [16] #[13, 14, 15, 16]
+      N = [10,13,16] #[13, 14, 15, 16]
       NumPatch = [5]  # NumPatch = [5, 7, 9, 11]
-      alpha = [5e-5] # [np.sqrt(5)*(10**-4), 10**-4, np.sqrt(5)**-1*(10**-4), np.sqrt(5)**(-2)*(10**-4)]
+      alpha = [2.5e-4, 5e-5, 1e-5] # [np.sqrt(5)*(10**-4), 10**-4, np.sqrt(5)**-1*(10**-4), np.sqrt(5)**(-2)*(10**-4)]
       midx = pd.MultiIndex.from_product([N, NumPatch, alpha])
       my_columns = [u'J(xbs)', u'J(xs)', u'f(xbs)', u'tv(xbs)', u'f(xs)', u'tv(xs)', u't(xbs)', u't(xs)']
       df = pd.DataFrame(index=midx, columns=my_columns)

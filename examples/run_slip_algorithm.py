@@ -34,12 +34,13 @@ def slip(eval_f, eval_jac, x0, lo_bangs, alpha, h, Delta0, sigma, maxiter):
         tvn = eval_tv(xn)
         
         print("%4u   %.3e      %.3e    %4u" % (n, fn + alpha * tvn, pred_Delta0, Delta))
-        # v1 = gn[np.insert((xn[1:] - xn[:-1]) !=0, 0, False)]
-        # v2 = gn[np.append((xn[1:] - xn[:-1]) !=0, [False])]
-        # stop_crit = np.linalg.norm(.5 * (v1 + v2)) / h
-        # if n > 0 and stop_crit < 1e-6:
-        #   print("Intationarity = %.2e < 1e-6." % stop_crit)
-        #   break        
+        v1 = gn[np.insert((xn[1:] - xn[:-1]) !=0, 0, False)]
+        v2 = gn[np.append((xn[1:] - xn[:-1]) !=0, [False])]
+        stop_crit = np.linalg.norm(.5 * (v1 + v2)) / h
+        print("Instationarity = %.2e" % stop_crit)
+        if n > 0 and stop_crit < 1e-6:
+          print("Instationarity = %.2e < 1e-6." % stop_crit)
+          break    
         
         Delta, k = Delta0, 0
         accept = False
@@ -106,7 +107,7 @@ def lg_jacobian_var(x, lg_cm, di, f_vec):
     return lg_jacobian(x, lg_cm, di, f_vec)
 
 def main():
-    N = 8192
+    N = 2**10
     di = create_discretization_info(-1., 1., N, 5)
     
     lo_bangs = np.array([-1, 0, 1], dtype=np.int32)
@@ -119,6 +120,11 @@ def main():
     lg_int_mda_mat = lg_int_mda(di)
     lg_cm = LgConvPwcMat(lg_int_mda_mat, di)
     
+    # import scipy
+    # A = lg_cm.mat_short.transpose() @ scipy.sparse.diags([di.lg_c_vec], [0]) @ lg_cm.mat_short
+    # print(type(A))
+    # eigvals, eigvecs = scipy.sparse.linalg.eigsh(A, k=1, which='LM', sigma=1.)
+    # print(eigvals)
     
     # == Setup optimization ==
     # * regularization
@@ -131,11 +137,10 @@ def main():
     eval_f = lambda x: lg_objective_var(x, lg_cm, di, f_vec)
     eval_jac = lambda x: lg_jacobian_var(x, lg_cm, di, f_vec)
     # * algorithm control
-    Delta0 = N // 4
+    Delta0 = N // 16
     sigma = 1e-3
     maxiter = 500
     h = 2./N
-    
     
     # == Optimization with convolution evaluated at Legendre-Gauss points ==
     opt_start = time.time()

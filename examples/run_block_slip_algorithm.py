@@ -126,12 +126,13 @@ def blockslip(x0, patches, lo_bangs, alpha, h, Delta0, sigma, maxiter, maxiter_k
         fn = lg_objective_var(xn, lg_cm, di, f_vec) #eval_f(xn)
         gn = lg_jacobian_var(xn, lg_cm, di, f_vec) #eval_jac(xn)
         
-        # v1 = gn[np.insert((xn[1:] - xn[:-1]) !=0, 0, False)]
-        # v2 = gn[np.append((xn[1:] - xn[:-1]) !=0, [False])]
-        # stop_crit = np.linalg.norm(.5 * (v1 + v2)) / h
-        # if n > 0 and stop_crit < 1e-6:
-        #   print("Intationarity = %.2e < 1e-6." % stop_crit)
-        #   break
+        v1 = gn[np.insert((xn[1:] - xn[:-1]) !=0, 0, False)]
+        v2 = gn[np.append((xn[1:] - xn[:-1]) !=0, [False])]
+        stop_crit = np.linalg.norm(.5 * (v1 + v2)) / h
+        print("Instationarity = %.2e" % stop_crit)
+        if n > 0 and stop_crit < 1e-6:
+          print("Instationarity = %.2e < 1e-6." % stop_crit)
+          break
         
         tvn = eval_tv(xn)
         Drad = Delta0
@@ -319,7 +320,7 @@ def main(N=2**12, alpha = 5e-5, numPatches=5, tol = 1e-6, usePlots = True, usePa
       else:
          plt.savefig("serial_"+str(N)+"_"+str(alpha)+"_"+str(numPatches), format = 'eps', dpi=1200)
       plt.close()
-    return (fbs+tvbs, fs+tvs, fbs, tvbs, fs, tvs, timebs, time_s), (x_bs, state_vec_bs)
+    return (fbs+alpha * tvbs, fs+alpha * tvs, fbs, tvbs, fs, tvs, timebs, time_s), (x_bs, state_vec_bs)
 
 if __name__ == "__main__":
     main()
