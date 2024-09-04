@@ -24,16 +24,17 @@ def slip(eval_f, eval_jac, x0, lo_bangs, alpha, h, Delta0, sigma, maxiter):
     xnk = np.empty((N,), dtype=np.int32)
     pred_positive = True
     Delta = 0
+    Delta_consumption = 0
     pred_Delta0 = 0
 
     print("SLIP using topsort as subproblem solver.")
-    print("Iter         obj   pred(Delta0)   Delta (acc)")
+    print("Iter         obj   pred(Delta0)   Delta   Delta [used]")
     for n in range(maxiter):
         fn = eval_f(xn)
         gn = eval_jac(xn)
         tvn = eval_tv(xn)
         
-        print("%4u   %.3e      %.3e    %4u" % (n, fn + alpha * tvn, pred_Delta0, Delta))
+        print("%4u   %.3e      %.3e    %4u    %4u" % (n, fn + alpha * tvn, pred_Delta0, Delta, Delta_consumption))
         v1 = gn[np.insert((xn[1:] - xn[:-1]) !=0, 0, False)]
         v2 = gn[np.append((xn[1:] - xn[:-1]) !=0, [False])]
         stop_crit = np.linalg.norm(.5 * (v1 + v2)) / h
@@ -75,6 +76,7 @@ def slip(eval_f, eval_jac, x0, lo_bangs, alpha, h, Delta0, sigma, maxiter):
             tvnk = eval_tv(xnk)
             ared = fn - fnk + alpha * tvn - alpha * tvnk
             pred = gn.dot(xn - xnk) + alpha * tvn - alpha * tvnk
+            Delta_consumption = np.sum(np.abs(xnk - xn))
 
             if Delta == Delta0:
                 pred_Delta0 = pred
