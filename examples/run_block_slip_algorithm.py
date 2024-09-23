@@ -63,35 +63,41 @@ class OneDPatches:
              self.idx[(j+1)] = np.arange(j*blkSize_noB-buffer, (j+1)*blkSize_noB+buffer)
           # self.extremaPts[(i, j)]
 
-def patchUpdate(
-        # vert_costs_buffer,
-        # vert_layer_buffer,
-        # vert_value_buffer,
-        # vert_prev_buffer,
-        # vert_remcap_buffer,
-  ind, gn, xn, lb, ub, lo_bangs, Drad, alpha, N, i):
-    #temp patch variable
-    w = np.zeros(len(ind), dtype=np.int32)
-    M = lo_bangs.shape[0]
-    number = time.time()
-    rand = np.random.randint(0, 1e6)
-    fn = "%d_%d.npz" % (number, rand)
+class PatchProblem:
+  def __init__(self, ind, gn, xn, lb, ub, lo_bangs, alpha, N, i):
+      self.ind = ind
+      self.gn  = gn
+      self.xn  = xn
+      self.lb  = lb
+      self.ub  = ub
+      self.lo_bangs = lo_bangs
+      self.alpha    = alpha
+      self.N        = N
+      self.i        = i
+      self.temp     = np.ones((len(ind)- 1,))
 
-    trs4slip.run_top(
-      w,
-      gn / alpha,
-      xn,
-      lo_bangs,
-      np.ones((len(ind)- 1,)),
-      Drad,
-      True, 
-      lb,
-      ub,
-      1.,
-      1.
-    )
-    
-    return w, i
+  def patchUpdate(self, Drad, i):
+      w = np.zeros(len(self.ind), dtype=np.int32)
+      M = self.lo_bangs.shape[0]
+      number = time.time()
+      rand = np.random.randint(0, 1e6)
+      fn = "%d_%d.npz" % (number, rand)
+
+      trs4slip.run_top(
+        w,
+        self.gn / self.alpha,
+        self.xn,
+        self.lo_bangs,
+        self.temp,
+        Drad,
+        True,
+        self.lb,
+        self.ub,
+        1.,
+        1.
+      )
+
+      return w, self.i
 
 
 
@@ -102,21 +108,13 @@ def blockslip(x0, patches, lo_bangs, alpha, h, Delta0, sigma, maxiter, maxiter_k
     N, M = x0.shape[0], lo_bangs.shape[0]
 
     xn = copy.deepcopy(x0) #make smaller so subproblem solver generates correct size
-    ## initialize temp variables
-    # xnk = copy.deepcopy(x0); #np.empty((N,), dtype=np.int32)
-    
+
     LnablaF = 1e1 ## guess? max of abs of gn? can we compute this for test problem?
     npatches = len(patches.idx)
 
     Delta0_start = x0.shape[0] / ((npatches + 1) / 2)
     while Delta0 / 2 >= Delta0_start:
       Delta0 /= 2
-
-    # vert_costs_buffer  = np.empty(N*M*(Delta0 + 1) + 2)
-    # vert_layer_buffer  = np.empty(N*M*(Delta0 + 1) + 2, dtype=np.int32)
-    # vert_value_buffer  = np.empty(N*M*(Delta0 + 1) + 2, dtype=np.int32)
-    # vert_prev_buffer   = np.empty(N*M*(Delta0 + 1) + 2, dtype=np.int32)
-    # vert_remcap_buffer = np.empty(N*M*(Delta0 + 1) + 2, dtype=np.int32)
 
     print("n - Iter  k - Iter  Patch     fnki          tvnki      J(x)")
     #Outer total loop
@@ -125,7 +123,7 @@ def blockslip(x0, patches, lo_bangs, alpha, h, Delta0, sigma, maxiter, maxiter_k
         W = WorkingSet(npatches)
         fn = lg_objective_var(xn, lg_cm, di, f_vec) #eval_f(xn)
         gn = lg_jacobian_var(xn, lg_cm, di, f_vec) #eval_jac(xn)
-        
+
         v1 = gn[np.insert((xn[1:] - xn[:-1]) !=0, 0, False)]
         v2 = gn[np.append((xn[1:] - xn[:-1]) !=0, [False])]
         stop_crit = np.linalg.norm(.5 * (v1 + v2)) / h
@@ -133,13 +131,17 @@ def blockslip(x0, patches, lo_bangs, alpha, h, Delta0, sigma, maxiter, maxiter_k
         if n > 0 and stop_crit < 1e-6:
           print("Instationarity = %.2e < 1e-6." % stop_crit)
           break
-        
+
         tvn = eval_tv(xn)
         Drad = Delta0
-        
+
         #Inner patch loop
         for k in range(maxiter_k):
+          # get list of active patches
           activePatches = W.getActivePatches()
+          # determine set of patch problems
+          pProbs = [PatchProblem(patches.idx[i], gn[patches.idx[i]], xn[patches.idx[i]], xn[patches.idx[i][0]], xn[patches.idx[i][-1]], lo_bangs, alpha, xn.shape[0], i) for i in activePatches]
+          # determine delta
           Drad          = Delta0*(2**-k)
 
           if len(activePatches) == 0 or Drad < 1:
@@ -148,22 +150,18 @@ def blockslip(x0, patches, lo_bangs, alpha, h, Delta0, sigma, maxiter, maxiter_k
           #subproblem solve only until we can figure out data sharing
           if useParallel:
             results = joblib.Parallel(n_jobs = npatches, backend='multiprocessing')(
-            joblib.delayed(patchUpdate)(patches.idx[i], gn[patches.idx[i]], xn[patches.idx[i]], xn[patches.idx[i][0]], xn[patches.idx[i][-1]], lo_bangs, Drad, alpha, xn.shape[0], i) for i in activePatches)
+            joblib.delayed(pProbs[i].patchUpdate(Drad, i) for i in range(0, len(activePatches))))
           else:
             results = []
-            for i in activePatches:
-              ind = patches.idx[i]
-              lidx = ind[0] - 1 
+            for i in range(0, len(activePatches)):
+              ind = pProbs[i].ind
+              lidx = ind[0] - 1
               ridx = ind[-1] + 1
-              results.append(patchUpdate(
-                ind, gn[ind], xn[ind],
-                xn[lidx] if lidx >= 0 else 0.,
-                xn[ridx] if ridx <= xn.size - 2 else 0.,
-                lo_bangs, Drad, alpha, xn.shape[0], i)
+              results.append(pProbs[i].patchUpdate(Drad, i)
               )
 
           xnk_temp = copy.deepcopy(xn)
-            
+
           for (w,i) in results:
             ind = patches.idx[i]
             xnk_temp[ind] = w
@@ -172,27 +170,27 @@ def blockslip(x0, patches, lo_bangs, alpha, h, Delta0, sigma, maxiter, maxiter_k
 
             ared_nkd = fn - fnk + alpha * tvn - alpha * tvnk
             pred_nkd = gn.dot(xn - xnk_temp) + alpha * tvn - alpha * tvnk
-            
+
             print("%4u     %4u     %4u     %.3e      %.3e   %.3e      %.3e" % (n, k, i, fnk, alpha*tvnk, fn + alpha*tvn, pred_nkd))
-            
-            pred_positive = pred_nkd > 0.            
+
+            pred_positive = pred_nkd > 0.
             if ared_nkd >= sigma * pred_nkd and pred_positive:
               A.append_data(k, i, w, ared_nkd)
             elif pred_positive and A.compute_max()[0] < sigma * pred_nkd: #+ LnablaF*Drad:
               W.append_data(k+1, i)
             W.remove_data(k, i)
-            xnk_temp[ind] = xn[ind]                
-          
+            xnk_temp[ind] = xn[ind]
+
           if not bool(W):
              break
-         
+
         if Drad < 1:
             print("Trust region contracted for n = %d, k = %d." % (n, k))
 
         if len(A.data)==0:
             print("Set of Active patches is empty!")
             return xn
-          
+
         # maxKey     = A.compute_max()[1]
         # ind        = patches.idx[maxKey[1]]
         # xn[ind]    = A.data[maxKey][0][0]
@@ -215,7 +213,7 @@ def blockslip(x0, patches, lo_bangs, alpha, h, Delta0, sigma, maxiter, maxiter_k
         if n == maxiter - 1:
           print("Iteration limit (%d) reached. Solution may be instationary." % (maxiter))
           break
-              
+
     return xn
 
 
@@ -264,7 +262,7 @@ def main(N=2**12, alpha = 5e-5, numPatches=5, tol = 1e-6, usePlots = True, usePa
     tvbs = eval_tv(x_bs)
     state_vec_bs = lg_cm.conv(x_bs)
     print("\n")
-    
+
     ## would probably have to put below into slip
     # process = psutil.Process(os.getpid())
     # memoryUsage = process.memory_info().rss
@@ -284,7 +282,7 @@ def main(N=2**12, alpha = 5e-5, numPatches=5, tol = 1e-6, usePlots = True, usePa
       fs = eval_f(x_s)
       tvs = eval_tv(x_s)
       time_s = np.nan
-    
+
     if usePlots:
       plt.subplot(1, 2, 1)
       ind = np.linspace(0., 1., N)
