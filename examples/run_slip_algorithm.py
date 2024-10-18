@@ -14,19 +14,14 @@ def slip(eval_f, eval_jac, x0, lo_bangs, alpha, h, Delta0, sigma, maxiter):
     assert lo_bangs.ndim == 1
     N, M = x0.shape[0], lo_bangs.shape[0]
 
-    xn = copy.deepcopy(x0)
-    # vert_costs_buffer = np.empty(N*M*(Delta0 + 1) + 2)
-    # vert_layer_buffer = np.empty(N*M*(Delta0 + 1) + 2, dtype=np.int32)
-    # vert_value_buffer = np.empty(N*M*(Delta0 + 1) + 2, dtype=np.int32)
-    # vert_prev_buffer = np.empty(N*M*(Delta0 + 1) + 2, dtype=np.int32)
-    # vert_remcap_buffer = np.empty(N*M*(Delta0 + 1) + 2, dtype=np.int32)
-        
+    xn = copy.deepcopy(x0)        
     xnk = np.empty((N,), dtype=np.int32)
     pred_positive = True
     Delta = 0
     Delta_consumption = 0
     pred_Delta0 = 0
 
+    time_subsolver = 0
     print("SLIP using topsort as subproblem solver.")
     print("Iter         obj   pred(Delta0)   Delta   Delta [used]")
     for n in range(maxiter):
@@ -34,30 +29,11 @@ def slip(eval_f, eval_jac, x0, lo_bangs, alpha, h, Delta0, sigma, maxiter):
         gn = eval_jac(xn)
         tvn = eval_tv(xn)
         
-        print("%4u   %.3e      %.3e    %4u    %4u" % (n, fn + alpha * tvn, pred_Delta0, Delta, Delta_consumption))
-        v1 = gn[np.insert((xn[1:] - xn[:-1]) !=0, 0, False)]
-        v2 = gn[np.append((xn[1:] - xn[:-1]) !=0, [False])]
-        stop_crit = np.linalg.norm(.5 * (v1 + v2)) / h
-        print("Instationarity = %.2e" % stop_crit)
-        if n > 0 and stop_crit < 1e-6:
-          print("Instationarity = %.2e < 1e-6." % stop_crit)
-          break    
-        
+        print("%4u   %.3e      %.3e    %4u    %4u" % (n, fn + alpha * tvn, pred_Delta0, Delta, Delta_consumption))        
         Delta, k = Delta0, 0
         accept = False
         while Delta >= 1 and not accept and pred_positive:
-            # trs4slip.run(
-            #     xnk, gn / alpha, xn, lo_bangs, Delta,
-            #     vert_costs_buffer,
-            #     vert_layer_buffer,
-            #     vert_value_buffer,
-            #     vert_prev_buffer,
-            #     vert_remcap_buffer,
-            #     True,
-            #     0.,
-            #     0.
-            # )
-            
+            tstart = time.time()            
             trs4slip.run_top(
                 xnk,
                 gn / alpha,
@@ -71,6 +47,7 @@ def slip(eval_f, eval_jac, x0, lo_bangs, alpha, h, Delta0, sigma, maxiter):
                 1.,
                 1.
             )
+            time_subsolver += time.time() - tstart
 
             fnk = eval_f(xnk)
             tvnk = eval_tv(xnk)
@@ -86,18 +63,21 @@ def slip(eval_f, eval_jac, x0, lo_bangs, alpha, h, Delta0, sigma, maxiter):
 
             if accept:
                 xn[:] = xnk[:]
+
             elif pred_positive:
                 Delta = Delta / 2
             k = k + 1
             
         if Delta < 1:
-            print("Trust region contracted. Solution may be close to stationarity.")
+            print("Trust region contracted.")
             break
         if not pred_positive:
             print("Predicted reduction is nonpositive. Solution may be close to stationarity.")
             break
     if n == maxiter - 1:
         print("Iteration limit (%d) reached. Solution may be instationary." % (maxiter))
+
+    print("Time in subsolver at %d,%.2e = %.4fs" % (xn.size, alpha, time_subsolver))
 
     return xn
 
@@ -121,13 +101,7 @@ def main():
     # * at Legendre-Gauss points for exact evaluation
     lg_int_mda_mat = lg_int_mda(di)
     lg_cm = LgConvPwcMat(lg_int_mda_mat, di)
-    
-    # import scipy
-    # A = lg_cm.mat_short.transpose() @ scipy.sparse.diags([di.lg_c_vec], [0]) @ lg_cm.mat_short
-    # print(type(A))
-    # eigvals, eigvecs = scipy.sparse.linalg.eigsh(A, k=1, which='LM', sigma=1.)
-    # print(eigvals)
-    
+        
     # == Setup optimization ==
     # * regularization
     alpha = 5e-5

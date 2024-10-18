@@ -13,7 +13,6 @@ from run_slip_algorithm import slip
 def eval_tv(x):
     return np.sum(np.abs(x[1:] - x[:-1])) + np.abs(x[0]) + np.abs(x[-1])
 
-
 class ActiveSet:
     def __init__(self):
         self.data = dict()
@@ -48,6 +47,23 @@ class WorkingSet:
             aP.append(e[1])
         return aP
 
+class OneDPatchesVariant10Percent:
+  def __init__(self, di, numblocks):
+    fraction_per_block = (1. + (numblocks - 1) * 0.1) / numblocks
+    self.idx = dict()     
+    for i in range(numblocks):
+      if i == 0:
+        frac_start = 0.
+        frac_end = fraction_per_block
+      else:
+        frac_start = frac_end - 0.1
+        frac_end = frac_start + fraction_per_block     
+      idx_start = np.floor(frac_start * di.N).astype(int)
+      idx_end = np.ceil(frac_end * di.N).astype(int)
+      if i == numblocks - 1:
+         idx_end = di.N
+      self.idx[i + 1] = np.arange(idx_start, idx_end)
+
 class OneDPatches:
   def __init__(self, di, numblocks=2, customblocks=False, buffer=4, *args): #put in grid axes
       self.idx = dict()
@@ -76,13 +92,8 @@ class PatchProblem:
       self.i        = i
       self.temp     = np.ones((len(ind)- 1,))
 
-  def patchUpdate(self, Drad, i):
+  def patchUpdate(self, Drad):
       w = np.zeros(len(self.ind), dtype=np.int32)
-      M = self.lo_bangs.shape[0]
-      number = time.time()
-      rand = np.random.randint(0, 1e6)
-      fn = "%d_%d.npz" % (number, rand)
-
       trs4slip.run_top(
         w,
         self.gn / self.alpha,
@@ -96,13 +107,9 @@ class PatchProblem:
         1.,
         1.
       )
-
       return w, self.i
 
-
-
-
-def blockslip(x0, patches, lo_bangs, alpha, h, Delta0, sigma, maxiter, maxiter_k, tol, lg_cm, di, f_vec, useParallel = False):
+def blockslip(x0, patches, lo_bangs, alpha, h, Delta0, sigma, maxiter, tol, lg_cm, di, f_vec, useParallel = False):
     assert x0.ndim == 1
     assert lo_bangs.ndim == 1
     N, M = x0.shape[0], lo_bangs.shape[0]
@@ -115,6 +122,7 @@ def blockslip(x0, patches, lo_bangs, alpha, h, Delta0, sigma, maxiter, maxiter_k
     Delta0_start = x0.shape[0] / ((npatches + 1) / 2)
     while Delta0 / 2 >= Delta0_start:
       Delta0 /= 2
+    maxiter_k = np.rint(np.log2(Delta0)).astype(int) + 1   
 
     print("n - Iter  k - Iter  Patch     fnki          tvnki      J(x)")
     #Outer total loop
@@ -123,15 +131,6 @@ def blockslip(x0, patches, lo_bangs, alpha, h, Delta0, sigma, maxiter, maxiter_k
         W = WorkingSet(npatches)
         fn = lg_objective_var(xn, lg_cm, di, f_vec) #eval_f(xn)
         gn = lg_jacobian_var(xn, lg_cm, di, f_vec) #eval_jac(xn)
-
-        v1 = gn[np.insert((xn[1:] - xn[:-1]) !=0, 0, False)]
-        v2 = gn[np.append((xn[1:] - xn[:-1]) !=0, [False])]
-        stop_crit = np.linalg.norm(.5 * (v1 + v2)) / h
-        print("Instationarity = %.2e" % stop_crit)
-        if n > 0 and stop_crit < 1e-6:
-          print("Instationarity = %.2e < 1e-6." % stop_crit)
-          break
-
         tvn = eval_tv(xn)
         Drad = Delta0
 
@@ -140,29 +139,25 @@ def blockslip(x0, patches, lo_bangs, alpha, h, Delta0, sigma, maxiter, maxiter_k
           # get list of active patches
           activePatches = W.getActivePatches()
           # determine set of patch problems
-          pProbs = [PatchProblem(patches.idx[i], gn[patches.idx[i]], xn[patches.idx[i]], xn[patches.idx[i][0]], xn[patches.idx[i][-1]], lo_bangs, alpha, xn.shape[0], i) for i in activePatches]
-          # determine delta
-          Drad          = Delta0*(2**-k)
+          pProbs = [PatchProblem(
+             patches.idx[i],
+             gn[patches.idx[i]],
+             xn[patches.idx[i]],
+             xn[patches.idx[i][0]],
+             xn[patches.idx[i][-1]],
+             lo_bangs, alpha, xn.shape[0], i) for i in activePatches
+          ]
+          Drad = Delta0*(2**-k)
 
           if len(activePatches) == 0 or Drad < 1:
             break
 
-          #subproblem solve only until we can figure out data sharing
-          if useParallel:
-            results = joblib.Parallel(n_jobs = npatches, backend='multiprocessing')(
-            joblib.delayed(pProbs[i].patchUpdate(Drad, i) for i in range(0, len(activePatches))))
-          else:
-            results = []
-            for i in range(0, len(activePatches)):
-              ind = pProbs[i].ind
-              lidx = ind[0] - 1
-              ridx = ind[-1] + 1
-              results.append(pProbs[i].patchUpdate(Drad, i)
-              )
+          results = []
+          for i in range(0, len(activePatches)):
+            results.append(pProbs[i].patchUpdate(Drad))
 
-          xnk_temp = copy.deepcopy(xn)
-
-          for (w,i) in results:
+          xnk_temp = xn.copy()
+          for (w, i) in results:
             ind = patches.idx[i]
             xnk_temp[ind] = w
             fnk = lg_objective_var(xnk_temp, lg_cm, di, f_vec)
@@ -189,7 +184,7 @@ def blockslip(x0, patches, lo_bangs, alpha, h, Delta0, sigma, maxiter, maxiter_k
 
         if len(A.data)==0:
             print("Set of Active patches is empty!")
-            return xn
+            break
 
         # maxKey     = A.compute_max()[1]
         # ind        = patches.idx[maxKey[1]]
@@ -201,11 +196,12 @@ def blockslip(x0, patches, lo_bangs, alpha, h, Delta0, sigma, maxiter, maxiter_k
           temp_x     = A.data[maxKey][0][0]
           ind        = patches.idx[maxKey[1]] #should just pick out grid indices
           txn[ind]   = temp_x
-          jnt        =  lg_objective_var(txn, lg_cm, di, f_vec) + alpha*eval_tv(txn)
+          jnt        = lg_objective_var(txn, lg_cm, di, f_vec) + alpha*eval_tv(txn)
           if jnt < j0:
             xn[ind] = txn[ind] #should be all you need.
             j0 = jnt
             A.remove_data(maxKey)
+            print("Improvement.")
           else:
             break
 
@@ -248,15 +244,14 @@ def main(N=2**12, alpha = 5e-5, numPatches=5, tol = 1e-6, usePlots = True, usePa
     Delta0 = N // 16
     sigma = 1e-3
     maxiter = 100
-    maxiter_k = 20
     h = 2./N
 
     # numPatches = 4
-    bufferSize = int(np.floor(N/(numPatches*2)))
-    patches = OneDPatches(di, numPatches, buffer=bufferSize)
+    patches = OneDPatchesVariant10Percent(di, numPatches)
+    #patches = OneDPatches(di, numPatches, buffer=bufferSize)
     # == Optimization with convolution evaluated at Legendre-Gauss points ==
     opt_start = time.time()
-    x_bs = blockslip(x, patches, lo_bangs, alpha, h, Delta0, sigma, maxiter, maxiter_k, tol, lg_cm, di, f_vec, useParallel = useParallel)
+    x_bs = blockslip(x, patches, lo_bangs, alpha, h, Delta0, sigma, maxiter, tol, lg_cm, di, f_vec, useParallel = useParallel)
     timebs = time.time() - opt_start
     fbs = eval_f(x_bs)
     tvbs = eval_tv(x_bs)

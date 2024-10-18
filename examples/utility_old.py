@@ -63,7 +63,6 @@ def a(t):
 
 
 def mkappa(t):
-
     val = A*np.sqrt(2)*(np.exp(-omega0*t/np.sqrt(2))*np.cos(omega0*t/np.sqrt(2) - np.pi/4.)*(-omega0/np.sqrt(2))
                          + np.exp(-omega0*t/np.sqrt(2))*(-np.sin(omega0*t/np.sqrt(2) - np.pi/4.)*(omega0/np.sqrt(2))))
     return val
