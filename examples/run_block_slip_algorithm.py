@@ -247,6 +247,7 @@ def main(N=2**12, alpha = 5e-5, numPatches=5, tol = 1e-6, usePlots = True, usePa
     h = 2./N
 
     # numPatches = 4
+    bufferSize = int(np.floor(N/(numPatches*2)))
     patches = OneDPatchesVariant10Percent(di, numPatches)
     #patches = OneDPatches(di, numPatches, buffer=bufferSize)
     # == Optimization with convolution evaluated at Legendre-Gauss points ==
