@@ -22,7 +22,7 @@ def main(exp):
     if exp==1:
       N = [12, 14]
       NumPatch = [4, 9]
-      alpha = [0.5e-3, 0.75e-3, 1e-3, 1.25e-3, 1.5e-3, 1.75e-3, 2e-3, 2.25e-3]
+      alpha = [0.125e-3, 0.25e-3, 0.375e-3, 0.5e-3, 0.625e-3, 0.75e-3]
       midx = pd.MultiIndex.from_product([N, NumPatch, alpha])
       my_columns = [u'J(xbs)', u'J(xs)', u'f(xbs)', u'tv(xbs)', u'f(xs)', u'tv(xs)', u't(xbs)', u't(xs)']
       df = pd.DataFrame(index=midx, columns=my_columns)

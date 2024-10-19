@@ -2,9 +2,6 @@ import copy
 import numpy as np
 import time
 import matplotlib.pyplot as plt
-import joblib
-import psutil
-import os
 
 from utility import *
 import trs4slip
@@ -241,8 +238,8 @@ def main(N=2**12, alpha = 5e-5, numPatches=5, tol = 1e-6, usePlots = True, usePa
     eval_f = lambda x: lg_objective_var(x, lg_cm, di, f_vec)
     eval_jac = lambda x: lg_jacobian_var(x, lg_cm, di, f_vec)
     # * algorithm control
-    Delta0 = N // 16
-    sigma = 1e-3
+    Delta0 = N // 8
+    sigma = 1e-4
     maxiter = 100
     h = 2./N
 
