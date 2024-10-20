@@ -240,7 +240,7 @@ def main(N=2**12, alpha = 5e-5, numPatches=5, tol = 1e-6, usePlots = True, usePa
     # * algorithm control
     Delta0 = N // 8
     sigma = 1e-4
-    maxiter = 100
+    maxiter = 500
     h = 2./N
 
     # numPatches = 4
